@@ -46,6 +46,7 @@ const EXERCISE_POOL = [
   'Flat Bench Press (Barbell)',
   'Butterfly (Pec Deck)',
   'Cable Crossover',
+  'Chest Flys',
   // Back
   'Seated Row (Wide Grip)',
   'Seated Row (Close Grip)',
@@ -60,15 +61,21 @@ const EXERCISE_POOL = [
   'Dumbbell Curl',
   'Hammer Curl',
   'Barbell Curl',
+  'Bayesian Curls',
   // Triceps
   'Tricep Extension (Cable Rope)',
-  'Tricep Extension (Cable V-Bar)', // V-bar grip attachment from image.png
+  'Tricep Extension (Cable V-Bar)',
   'Skull Crushers (EZ Bar)',
   'Dips (Bodyweight/Weighted)',
   // Legs & Core
   'Squat (Barbell)',
   'Leg Press',
   'Romanian Deadlift',
+  'Leg Extensions',
+  'Seated Leg Curl',
+  'Lying Leg Curl',
+  'Calf Raises',
+  'Abductors',
   'Plank',
   'Hanging Knee Raise'
 ];
@@ -138,7 +145,7 @@ export default function App() {
   const [newRoutineColor, setNewRoutineColor] = useState('Blue');
   const [newRoutineExercises, setNewRoutineExercises] = useState([]);
   
-  // Exercise entry sub-state (Standard Set Amount configured to '3')
+  // Exercise entry sub-state
   const [exInput, setExInput] = useState('');
   const [exSetsInput, setExSetsInput] = useState('3'); 
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -188,7 +195,7 @@ export default function App() {
       name: newRoutineName,
       color: ROUTINE_COLORS[newRoutineColor],
       colorName: newRoutineColor,
-      exercises: newRoutineExercises // Not forced to add exercises anymore (perfect for tracking rest/stretching days!)
+      exercises: newRoutineExercises 
     };
 
     const updated = [...routines, newRoutine];
@@ -202,27 +209,35 @@ export default function App() {
   };
 
   const handleDeleteRoutine = (id) => {
-    Alert.alert('Delete Routine', 'Are you sure? This unlinks the routine from your schedule metrics.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => {
-        const updatedRoutines = routines.filter(r => r.id !== id);
-        setRoutines(updatedRoutines);
-        saveData(STORAGE_KEYS.ROUTINES, updatedRoutines);
+    const performDelete = () => {
+      const updatedRoutines = routines.filter(r => r.id !== id);
+      setRoutines(updatedRoutines);
+      saveData(STORAGE_KEYS.ROUTINES, updatedRoutines);
 
-        const updatedSchedule = { ...schedule };
-        DAYS_OF_WEEK.forEach(day => {
-          if (updatedSchedule[day] === id) updatedSchedule[day] = null;
-        });
-        setSchedule(updatedSchedule);
-        saveData(STORAGE_KEYS.SCHEDULE, updatedSchedule);
-        if (impromptuRoutine?.id === id) setImpromptuRoutine(null);
-      }}
-    ]);
+      const updatedSchedule = { ...schedule };
+      DAYS_OF_WEEK.forEach(day => {
+        if (updatedSchedule[day] === id) updatedSchedule[day] = null;
+      });
+      setSchedule(updatedSchedule);
+      saveData(STORAGE_KEYS.SCHEDULE, updatedSchedule);
+      if (impromptuRoutine?.id === id) setImpromptuRoutine(null);
+    };
+
+    // Cross-Platform safe deletion confirmation (Web vs. Native app layers)
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to delete this blueprint? This unlinks it from your schedule fields.');
+      if (confirmed) performDelete();
+    } else {
+      Alert.alert('Delete Routine', 'Are you sure? This unlinks the routine from your schedule metrics.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: performDelete }
+      ]);
+    }
   };
 
   const handleAddExerciseToCreator = () => {
     if (!exInput.trim()) return;
-    const setsCount = parseInt(exSetsInput) || 3; // Standard set fallback changed to 3
+    const setsCount = parseInt(exSetsInput) || 3; 
     const newEx = {
       id: Date.now().toString() + Math.random().toString(),
       name: exInput.trim(),
@@ -230,7 +245,7 @@ export default function App() {
     };
     setNewRoutineExercises([...newRoutineExercises, newEx]);
     setExInput('');
-    setExSetsInput('3'); // Resets cleanly to standard 3 sets
+    setExSetsInput('3'); 
     setShowSuggestions(false);
   };
 
@@ -271,7 +286,6 @@ export default function App() {
     setActiveWorkoutLogs(updated);
   };
 
-  // Toggle state checkmarks directly inside active exercise logs
   const handleToggleSetComplete = (exId, setIndex) => {
     const updated = { ...activeWorkoutLogs };
     if (!updated[exId]) updated[exId] = [];
@@ -357,7 +371,7 @@ export default function App() {
                   <View style={{ flex: 1, marginRight: 8 }}>
                     <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
                     <Text style={styles.cardMutedText}>
-                      {improwRoutine = impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for execution this ${getTodayDayName()}`}
+                      {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for execution this ${getTodayDayName()}`}
                     </Text>
                   </View>
                   <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
@@ -429,7 +443,6 @@ export default function App() {
                             const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
                             return (
                               <View key={setIndex} style={[styles.row, { marginBottom: 8, alignItems: 'center' }, isSetDone && styles.rowCompletedHighlight]}>
-                                {/* ACTUAL CLICKABLE LOGGING BUTTON FOR EXERCISES */}
                                 <TouchableOpacity 
                                   style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
                                   onPress={() => handleToggleSetComplete(ex.id, setIndex)}
@@ -629,7 +642,7 @@ export default function App() {
         )}
       </ScrollView>
 
-      {/* --- MODAL CONFIGURATION PLATFORMS --- */}
+      {/* --- MODALS --- */}
 
       {/* 1. BLUEPRINT CREATOR MODAL */}
       <Modal animationType="slide" transparent visible={routineModalVisible} onRequestClose={() => setRoutineModalVisible(false)}>
@@ -691,13 +704,12 @@ export default function App() {
                       onChangeText={setExSetsInput}
                     />
                   </View>
-                  {/* BUTTON ACTION: ADD EXERCISE TO STAGE LIST */}
                   <TouchableOpacity style={styles.inlineAddBtn} onPress={handleAddExerciseToCreator}>
                     <Ionicons name="add" size={24} color={THEME.text} />
                   </TouchableOpacity>
                 </View>
 
-                {/* AUTOCOMPLETE SUGGESTION EXPANSIONS */}
+                {/* AUTOCOMPLETE SUGGESTIONS */}
                 {showSuggestions && filteredSuggestions.length > 0 && (
                   <View style={styles.suggestionsBox}>
                     {filteredSuggestions.slice(0, 5).map((suggestion) => (
@@ -716,7 +728,6 @@ export default function App() {
                 )}
               </View>
 
-              {/* PRESSABLE STAGING LIST BUTTONS (Tap to remove exercise from template creation) */}
               <View style={{ marginTop: 12 }}>
                 {newRoutineExercises.length > 0 && (
                   <Text style={[styles.cardMutedText, { marginBottom: 6, fontSize: 11 }]}>Tip: Tap an added exercise to remove it.</Text>
@@ -767,7 +778,7 @@ export default function App() {
               
               {routines.map(r => (
                 <TouchableOpacity 
-                  key={r.id} 
+                   key={r.id} 
                   style={[styles.scheduleRow, { borderLeftWidth: 4, borderLeftColor: r.color }]}
                   onPress={() => handleAssignSchedule(r.id)}
                 >
