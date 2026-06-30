@@ -39,45 +39,96 @@ const ROUTINE_COLORS = {
   Gray: '#6B7280',   // Flexible / Custom / Rest
 };
 
-const EXERCISE_POOL = [
+// Top 10 exercises per muscle group + your highly requested bodyweight items
+const BASE_EXERCISE_POOL = [
+  // Pull-ups / Chin-ups / Dips Explicit Entries
+  'Pull-ups (Bodyweight / Weighted)',
+  'Chin-ups (Bodyweight / Weighted)',
+  'Dips (Chest Focus)',
+  'Dips (Triceps Focus)',
+  
   // Chest
-  'Chest Press (Machine)',
-  'Incline Dumbbell Press',
   'Flat Bench Press (Barbell)',
-  'Butterfly (Pec Deck)',
-  'Cable Crossover',
-  'Chest Flys',
+  'Incline Dumbbell Press',
+  'Decline Barbell Press',
+  'Dumbbell Chest Flys',
+  'Cable Crossover Flys',
+  'Push-ups (Standard / Deficit)',
+  'Machine Chest Press',
+  'Pec Deck Flys',
+  'Incline Barbell Press',
+  'Hammer Strength Chest Press',
+
   // Back
-  'Seated Row (Wide Grip)',
-  'Seated Row (Close Grip)',
   'Lat Pulldown (Wide Grip)',
-  'Barbell Row',
-  'Reverse Butterfly (Rear Delt Fly)',
+  'Barbell Rows',
+  'One-Arm Dumbbell Rows',
+  'Seated Cable Rows (Close Grip)',
+  'T-Bar Rows',
+  'Conventional Deadlift',
+  'Hyperextensions (Back Extensions)',
+  'Rack Pulls',
+  'Straight-Arm Cable Pulldowns',
+  'Seated Row (Wide Grip)',
+
   // Shoulders
-  'Shoulder Press (Dumbbell)',
-  'Lateral Raise (Dumbbell)',
   'Overhead Press (Barbell)',
+  'Seated Dumbbell Shoulder Press',
+  'Lateral Raises (Dumbbell)',
+  'Front Raises (Dumbbell / Cable)',
+  'Rear Delt Flys (Pec Deck)',
+  'Arnold Press',
+  'Dumbbell Shrugs',
+  'Upright Rows (Barbell / Cable)',
+  'Face Pulls (Rope)',
+  'Push Press',
+
   // Biceps
-  'Dumbbell Curl',
-  'Hammer Curl',
-  'Barbell Curl',
+  'Barbell Curls',
+  'Dumbbell Alternating Curls',
+  'Hammer Curls',
+  'Preacher Curls (EZ Bar)',
+  'Concentration Curls',
+  'Incline Dumbbell Curls',
+  'Cable Curls (Rope / Straight Bar)',
+  'Spider Curls',
   'Bayesian Curls',
+  'Zottman Curls',
+
   // Triceps
-  'Tricep Extension (Cable Rope)',
-  'Tricep Extension (Cable V-Bar)',
+  'Overhead Tricep Extension (Dumbbell)',
+  'Tricep Rope Pushdowns',
   'Skull Crushers (EZ Bar)',
-  'Dips (Bodyweight/Weighted)',
-  // Legs & Core
-  'Squat (Barbell)',
+  'Close-Grip Bench Press',
+  'Diamond Push-ups',
+  'Cable V-Bar Pushdowns',
+  'Tricep Dumbbell Kickbacks',
+  'Bench Dips',
+  'Machine Tricep Pressdown',
+
+  // Legs
+  'Back Squat (Barbell)',
   'Leg Press',
-  'Romanian Deadlift',
-  'Leg Extensions',
+  'Romanian Deadlift (Barbell / Dumbbell)',
+  'Leg Extensions (Machine)',
   'Seated Leg Curl',
   'Lying Leg Curl',
-  'Calf Raises',
-  'Abductors',
-  'Plank',
-  'Hanging Knee Raise'
+  'Walking Lunges',
+  'Bulgarian Split Squats',
+  'Standing Calf Raises',
+  'Hip Thrusts (Barbell)',
+
+  // Core / Abs
+  'Plank (Standard / Weighted)',
+  'Abdominal Crunches',
+  'Hanging Leg Raises',
+  'Russian Twists',
+  'Ab Wheel Rollouts',
+  'Reverse Crunches',
+  'Cable Woodchoppers',
+  'Hanging Knee Raises',
+  'Bicycle Crunches',
+  'Bird Dog'
 ];
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -86,6 +137,7 @@ const STORAGE_KEYS = {
   ROUTINES: '@kat_tracker_routines_v3',
   SCHEDULE: '@kat_tracker_schedule_v3',
   HISTORY: '@kat_tracker_history_v3',
+  CUSTOM_EX_POOL: '@kat_tracker_custom_pool_v3'
 };
 
 // --- UTILITY FUNCTIONS ---
@@ -132,6 +184,7 @@ export default function App() {
     Monday: null, Tuesday: null, Wednesday: null, Thursday: null, Friday: null, Saturday: null, Sunday: null
   });
   const [history, setHistory] = useState({});
+  const [customExercisePool, setCustomExercisePool] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // --- SUB-SCREEN CONTROLLER STATES ---
@@ -139,8 +192,9 @@ export default function App() {
   const [activeWorkoutLogs, setActiveWorkoutLogs] = useState({}); 
   const [impromptuRoutine, setImpromptuRoutine] = useState(null); 
 
-  // Creator state
+  // Creator / Editor state
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
+  const [editingRoutineId, setEditingRoutineId] = useState(null); 
   const [newRoutineName, setNewRoutineName] = useState('');
   const [newRoutineColor, setNewRoutineColor] = useState('Blue');
   const [newRoutineExercises, setNewRoutineExercises] = useState([]);
@@ -167,10 +221,12 @@ export default function App() {
       const storedRoutines = await AsyncStorage.getItem(STORAGE_KEYS.ROUTINES);
       const storedSchedule = await AsyncStorage.getItem(STORAGE_KEYS.SCHEDULE);
       const storedHistory = await AsyncStorage.getItem(STORAGE_KEYS.HISTORY);
+      const storedCustomEx = await AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_EX_POOL);
 
       if (storedRoutines) setRoutines(JSON.parse(storedRoutines));
       if (storedSchedule) setSchedule(JSON.parse(storedSchedule));
       if (storedHistory) setHistory(JSON.parse(storedHistory));
+      if (storedCustomEx) setCustomExercisePool(JSON.parse(storedCustomEx));
     } catch (e) {
       Alert.alert('Error', 'Failed to load local tracking data.');
     } finally {
@@ -186,25 +242,65 @@ export default function App() {
     }
   };
 
+  // Combine default base items with learned user modifications
+  const combinedExercisePool = useMemo(() => {
+    return [...new Set([...BASE_EXERCISE_POOL, ...customExercisePool])];
+  }, [customExercisePool]);
+
+  // Track if today has already been logged inside tracking metrics
+  const isTodayCompleted = useMemo(() => {
+    const todayStr = getLocalDateString();
+    return !!history[todayStr];
+  }, [history]);
+
   // --- BUSINESS ENGINE HANDLERS ---
-  const handleCreateRoutine = () => {
+  const handleCreateOrUpdateRoutine = () => {
     if (!newRoutineName.trim()) return Alert.alert('Invalid Input', 'Provide a name for your routine.');
 
-    const newRoutine = {
-      id: Date.now().toString(),
-      name: newRoutineName,
-      color: ROUTINE_COLORS[newRoutineColor],
-      colorName: newRoutineColor,
-      exercises: newRoutineExercises 
-    };
+    let updatedRoutines;
 
-    const updated = [...routines, newRoutine];
-    setRoutines(updated);
-    saveData(STORAGE_KEYS.ROUTINES, updated);
+    if (editingRoutineId) {
+      // Editing existing blueprint
+      updatedRoutines = routines.map(r => r.id === editingRoutineId ? {
+        ...r,
+        name: newRoutineName,
+        color: ROUTINE_COLORS[newRoutineColor],
+        colorName: newRoutineColor,
+        exercises: newRoutineExercises
+      } : r);
+    } else {
+      // Creating an entirely brand-new blueprint entry
+      const newRoutine = {
+        id: Date.now().toString(),
+        name: newRoutineName,
+        color: ROUTINE_COLORS[newRoutineColor],
+        colorName: newRoutineColor,
+        exercises: newRoutineExercises 
+      };
+      updatedRoutines = [...routines, newRoutine];
+    }
 
+    setRoutines(updatedRoutines);
+    saveData(STORAGE_KEYS.ROUTINES, updatedRoutines);
+
+    handleCloseRoutineModal();
+  };
+
+  const handleStartEditRoutine = (routine) => {
+    setEditingRoutineId(routine.id);
+    setNewRoutineName(routine.name);
+    setNewRoutineColor(routine.colorName || 'Blue');
+    setNewRoutineExercises(routine.exercises);
+    setRoutineModalVisible(true);
+  };
+
+  const handleCloseRoutineModal = () => {
     setNewRoutineName('');
     setNewRoutineColor('Blue');
     setNewRoutineExercises([]);
+    setEditingRoutineId(null);
+    setExInput('');
+    setExSetsInput('3');
     setRoutineModalVisible(false);
   };
 
@@ -223,7 +319,6 @@ export default function App() {
       if (impromptuRoutine?.id === id) setImpromptuRoutine(null);
     };
 
-    // Cross-Platform safe deletion confirmation (Web vs. Native app layers)
     if (Platform.OS === 'web') {
       const confirmed = window.confirm('Are you sure you want to delete this blueprint? This unlinks it from your schedule fields.');
       if (confirmed) performDelete();
@@ -236,13 +331,24 @@ export default function App() {
   };
 
   const handleAddExerciseToCreator = () => {
-    if (!exInput.trim()) return;
+    const exerciseName = exInput.trim();
+    if (!exerciseName) return;
+    
     const setsCount = parseInt(exSetsInput) || 3; 
     const newEx = {
       id: Date.now().toString() + Math.random().toString(),
-      name: exInput.trim(),
+      name: exerciseName,
       defaultSets: setsCount
     };
+
+    // Auto-learn routine system verification check
+    const itemExists = combinedExercisePool.some(item => item.toLowerCase() === exerciseName.toLowerCase());
+    if (!itemExists) {
+      const updatedCustomPool = [...customExercisePool, exerciseName];
+      setCustomExercisePool(updatedCustomPool);
+      saveData(STORAGE_KEYS.CUSTOM_EX_POOL, updatedCustomPool);
+    }
+
     setNewRoutineExercises([...newRoutineExercises, newEx]);
     setExInput('');
     setExSetsInput('3'); 
@@ -330,11 +436,11 @@ export default function App() {
 
   const filteredSuggestions = useMemo(() => {
     if (!exInput.trim()) return [];
-    return EXERCISE_POOL.filter(item => 
+    return combinedExercisePool.filter(item => 
       item.toLowerCase().includes(exInput.toLowerCase()) && 
       !newRoutineExercises.some(e => e.name.toLowerCase() === item.toLowerCase())
     );
-  }, [exInput, newRoutineExercises]);
+  }, [exInput, newRoutineExercises, combinedExercisePool]);
 
   if (loading) {
     return (
@@ -365,126 +471,144 @@ export default function App() {
           <View>
             <Text style={styles.viewTitle}>Today's Execution</Text>
             
-            {currentActiveRoutine ? (
-              <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: currentActiveRoutine.color }]}>
-                <View style={styles.rowBetween}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
-                    <Text style={styles.cardMutedText}>
-                      {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for execution this ${getTodayDayName()}`}
-                    </Text>
-                  </View>
-                  <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
-                    <Text style={{ color: currentActiveRoutine.color, fontWeight: '700', fontSize: 12 }}>
-                      {currentActiveRoutine.exercises.length} Exercises
-                    </Text>
-                  </View>
-                </View>
-                {impromptuRoutine && (
-                  <TouchableOpacity style={styles.clearImpromptuBtn} onPress={() => setImpromptuRoutine(null)}>
-                    <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600' }}>Cancel Custom Choice</Text>
-                  </TouchableOpacity>
-                )}
+            {isTodayCompleted ? (
+              <View style={styles.completedBannerCard}>
+                <Ionicons name="checkmark-circle" size={44} color={THEME.success} style={{ marginBottom: 10 }} />
+                <Text style={styles.completedBannerTitle}>Workout Saved & Locked! 🎉</Text>
+                <Text style={styles.completedBannerMuted}>Today's tracking metrics are loaded securely into history logs. The logging panel will restore when tomorrow's training day begins.</Text>
+                <TouchableOpacity style={[styles.primaryButton, { marginTop: 16, backgroundColor: THEME.surfaceLight }]} onPress={() => setCurrentTab('history')}>
+                  <Text style={[styles.primaryButtonText, { color: THEME.text, fontSize: 13 }]}>Review Performance Log</Text>
+                </TouchableOpacity>
               </View>
             ) : (
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Unscheduled / Flexible Day 🔓</Text>
-                <Text style={styles.cardMutedText}>No routine is locked into today's matrix. Want to train or run a rest check-in? Select a blueprint configuration on-the-fly below:</Text>
-                
-                <View style={{ marginTop: 12 }}>
-                  {routines.map(r => (
-                    <TouchableOpacity 
-                      key={r.id} 
-                      style={[styles.flexibleRoutineItem, { borderLeftColor: r.color }]}
-                      onPress={() => setImpromptuRoutine(r)}
-                    >
-                      <Text style={{ color: THEME.text, fontWeight: '600' }}>Launch {r.name}</Text>
-                      <Ionicons name="play-circle" size={20} color={r.color} />
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity style={[styles.primaryButton, { marginTop: 10, backgroundColor: THEME.surfaceLight }]} onPress={() => setCurrentTab('routines')}>
-                    <Text style={[styles.primaryButtonText, { color: THEME.text }]}>+ Manage Blueprint Blueprints</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* TOGGLE WORKOUT LOGGING BLOCKS */}
-            {currentActiveRoutine && (
-              <View style={styles.toggleCard}>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.toggleText}>Ready to log today's session?</Text>
-                  <TouchableOpacity 
-                    style={[styles.checkbox, isGymDayChecked && styles.checkboxChecked]}
-                    onPress={() => setIsGymDayChecked(!isGymDayChecked)}
-                  >
-                    {isGymDayChecked && <Ionicons name="checkmark" size={16} color={THEME.text} />}
-                  </TouchableOpacity>
-                </View>
-
-                {isGymDayChecked && (
-                  <View style={{ marginTop: 20 }}>
-                    {currentActiveRoutine.exercises.length === 0 ? (
-                      <Text style={[styles.cardMutedText, { textAlign: 'center', marginVertical: 20 }]}>
-                        This is an empty rest/recovery block routine blueprint. You can commit it instantly below to log your active recovery tracking sequence!
-                      </Text>
-                    ) : (
-                      currentActiveRoutine.exercises.map((ex) => (
-                        <View key={ex.id} style={styles.exerciseLogBlock}>
-                          <Text style={styles.exerciseLogName}>{ex.name}</Text>
-                          
-                          <View style={[styles.row, { marginBottom: 6, opacity: 0.6 }]}>
-                            <Text style={[styles.setCell, { width: 50, textAlign: 'center' }]}>Status</Text>
-                            <Text style={[styles.setCell, { flex: 1 }]}>Weight (kg)</Text>
-                            <Text style={[styles.setCell, { flex: 1 }]}>Reps</Text>
-                          </View>
-
-                          {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
-                            const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
-                            return (
-                              <View key={setIndex} style={[styles.row, { marginBottom: 8, alignItems: 'center' }, isSetDone && styles.rowCompletedHighlight]}>
-                                <TouchableOpacity 
-                                  style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
-                                  onPress={() => handleToggleSetComplete(ex.id, setIndex)}
-                                >
-                                  {isSetDone ? (
-                                    <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
-                                  ) : (
-                                    <Text style={styles.setCheckText}>{setIndex + 1}</Text>
-                                  )}
-                                </TouchableOpacity>
-
-                                <TextInput
-                                  style={[styles.logInput, isSetDone && styles.logInputDisabled]}
-                                  placeholder="0"
-                                  placeholderTextColor="#555"
-                                  keyboardType="numeric"
-                                  editable={!isSetDone}
-                                  value={activeWorkoutLogs[ex.id]?.[setIndex]?.weight || ''}
-                                  onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
-                                />
-                                <TextInput
-                                  style={[styles.logInput, isSetDone && styles.logInputDisabled]}
-                                  placeholder="0"
-                                  placeholderTextColor="#555"
-                                  keyboardType="numeric"
-                                  editable={!isSetDone}
-                                  value={activeWorkoutLogs[ex.id]?.[setIndex]?.reps || ''}
-                                  onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
-                                />
-                              </View>
-                            );
-                          })}
-                        </View>
-                      ))
+              <>
+                {currentActiveRoutine ? (
+                  <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: currentActiveRoutine.color }]}>
+                    <View style={styles.rowBetween}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
+                        <Text style={styles.cardMutedText}>
+                          {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for execution this ${getTodayDayName()}`}
+                        </Text>
+                      </View>
+                      <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
+                        <Text style={{ color: currentActiveRoutine.color, fontWeight: '700', fontSize: 12 }}>
+                          {currentActiveRoutine.exercises.length} Exercises
+                        </Text>
+                      </View>
+                    </View>
+                    {impromptuRoutine && (
+                      <TouchableOpacity style={styles.clearImpromptuBtn} onPress={() => setImpromptuRoutine(null)}>
+                        <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600' }}>Cancel Custom Choice</Text>
+                      </TouchableOpacity>
                     )}
-
-                    <TouchableOpacity style={styles.primaryButton} onPress={handleSaveWorkoutSession}>
-                      <Text style={styles.primaryButtonText}>Commit & Save Workout Metrics</Text>
-                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Unscheduled / Flexible Day 🔓</Text>
+                    <Text style={styles.cardMutedText}>No routine is locked into today's matrix. Want to train or run a rest check-in? Select a blueprint configuration on-the-fly below:</Text>
+                    
+                    <View style={{ marginTop: 12 }}>
+                      {routines.map(r => (
+                        <TouchableOpacity 
+                          key={r.id} 
+                          style={[styles.flexibleRoutineItem, { borderLeftColor: r.color }]}
+                          onPress={() => setImpromptuRoutine(r)}
+                        >
+                          <Text style={{ color: THEME.text, fontWeight: '600' }}>Launch {r.name}</Text>
+                          <Ionicons name="play-circle" size={20} color={r.color} />
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity style={[styles.primaryButton, { marginTop: 10, backgroundColor: THEME.surfaceLight }]} onPress={() => setCurrentTab('routines')}>
+                        <Text style={[styles.primaryButtonText, { color: THEME.text }]}>+ Manage Blueprint Blueprints</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
-              </View>
+
+                {/* TOGGLE WORKOUT LOGGING BLOCKS */}
+                {currentActiveRoutine && (
+                  <View style={styles.toggleCard}>
+                    <View style={styles.rowBetween}>
+                      <Text style={styles.toggleText}>Ready to log today's session?</Text>
+                      <TouchableOpacity 
+                        style={[styles.checkbox, isGymDayChecked && styles.checkboxChecked]}
+                        onPress={() => setIsGymDayChecked(!isGymDayChecked)}
+                      >
+                        {isGymDayChecked && <Ionicons name="checkmark" size={16} color={THEME.text} />}
+                      </TouchableOpacity>
+                    </View>
+
+                    {isGymDayChecked && (
+                      <View style={{ marginTop: 20 }}>
+                        {currentActiveRoutine.exercises.length === 0 ? (
+                          <Text style={[styles.cardMutedText, { textAlign: 'center', marginVertical: 20 }]}>
+                            This is an empty rest/recovery block routine blueprint. You can commit it instantly below to log your active recovery tracking sequence!
+                          </Text>
+                        ) : (
+                          currentActiveRoutine.exercises.map((ex) => (
+                            <View key={ex.id} style={styles.exerciseLogBlock}>
+                              <Text style={styles.exerciseLogName}>{ex.name}</Text>
+                              
+                              <View style={[styles.logMetricsRowHeader, { marginBottom: 4 }]}>
+                                <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
+                                <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
+                                <Text style={[styles.columnLabel, { flex: 1 }]}>Reps Done</Text>
+                              </View>
+
+                              {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
+                                const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
+                                return (
+                                  <View key={setIndex} style={[styles.logMetricsRowHeader, { marginBottom: 8 }, isSetDone && styles.rowCompletedHighlight]}>
+                                    <TouchableOpacity 
+                                      style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
+                                      onPress={() => handleToggleSetComplete(ex.id, setIndex)}
+                                    >
+                                      {isSetDone ? (
+                                        <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
+                                      ) : (
+                                        <Text style={styles.setCheckText}>{setIndex + 1}</Text>
+                                      )}
+                                    </TouchableOpacity>
+
+                                    <View style={{ flex: 1, marginRight: 8 }}>
+                                      <TextInput
+                                        style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
+                                        placeholder="0"
+                                        placeholderTextColor="#555"
+                                        keyboardType="numeric"
+                                        editable={!isSetDone}
+                                        value={activeWorkoutLogs[ex.id]?.[setIndex]?.weight || ''}
+                                        onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
+                                      />
+                                    </View>
+                                    
+                                    <View style={{ flex: 1 }}>
+                                      <TextInput
+                                        style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
+                                        placeholder="0"
+                                        placeholderTextColor="#555"
+                                        keyboardType="numeric"
+                                        editable={!isSetDone}
+                                        value={activeWorkoutLogs[ex.id]?.[setIndex]?.reps || ''}
+                                        onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
+                                      />
+                                    </View>
+                                  </View>
+                                );
+                              })}
+                            </View>
+                          ))
+                        )}
+
+                        <TouchableOpacity style={styles.primaryButton} onPress={handleSaveWorkoutSession}>
+                          <Text style={styles.primaryButtonText}>Commit & Save Workout Metrics</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </>
             )}
           </View>
         )}
@@ -511,9 +635,14 @@ export default function App() {
                 <View key={item.id} style={[styles.card, { borderLeftWidth: 5, borderLeftColor: item.color }]}>
                   <View style={styles.rowBetween}>
                     <Text style={styles.cardTitle}>{item.name}</Text>
-                    <TouchableOpacity onPress={() => handleDeleteRoutine(item.id)}>
-                      <Ionicons name="trash-outline" size={20} color={THEME.textMuted} />
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <TouchableOpacity onPress={() => handleStartEditRoutine(item)} style={{ marginRight: 14, padding: 4 }}>
+                        <Ionicons name="create-outline" size={22} color={THEME.textMuted} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteRoutine(item.id)} style={{ padding: 4 }}>
+                        <Ionicons name="trash-outline" size={20} color={THEME.textMuted} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
                     {item.exercises.length === 0 ? (
@@ -644,13 +773,15 @@ export default function App() {
 
       {/* --- MODALS --- */}
 
-      {/* 1. BLUEPRINT CREATOR MODAL */}
-      <Modal animationType="slide" transparent visible={routineModalVisible} onRequestClose={() => setRoutineModalVisible(false)}>
+      {/* 1. BLUEPRINT CREATOR / EDITOR MODAL */}
+      <Modal animationType="slide" transparent visible={routineModalVisible} onRequestClose={handleCloseRoutineModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Workout Blueprint</Text>
-              <TouchableOpacity onPress={() => setRoutineModalVisible(false)}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.modalTitle}>{editingRoutineId ? 'Modify Plan Blueprint' : 'New Workout Blueprint'}</Text>
+              </View>
+              <TouchableOpacity onPress={handleCloseRoutineModal} style={{ padding: 4 }}>
                 <Ionicons name="close" size={24} color={THEME.text} />
               </TouchableOpacity>
             </View>
@@ -687,7 +818,7 @@ export default function App() {
                   <View style={{ flex: 2, marginRight: 8 }}>
                     <TextInput 
                       style={styles.textInput} 
-                      placeholder="Type or search item..." 
+                      placeholder="Search or type custom..." 
                       placeholderTextColor="#666"
                       value={exInput}
                       onChangeText={(txt) => { setExInput(txt); setShowSuggestions(true); }}
@@ -709,7 +840,7 @@ export default function App() {
                   </TouchableOpacity>
                 </View>
 
-                {/* AUTOCOMPLETE SUGGESTIONS */}
+                {/* AUTOCOMPLETE SUGGESTIONS (Includes newly discovered tracking metrics) */}
                 {showSuggestions && filteredSuggestions.length > 0 && (
                   <View style={styles.suggestionsBox}>
                     {filteredSuggestions.slice(0, 5).map((suggestion) => (
@@ -740,7 +871,7 @@ export default function App() {
                       setNewRoutineExercises(newRoutineExercises.filter(e => e.id !== ex.id));
                     }}
                   >
-                    <Text style={{ color: THEME.text, fontWeight: '500' }}>{index + 1}. {ex.name}</Text>
+                    <Text style={{ color: THEME.text, fontWeight: '500', flex: 1, marginRight: 6 }}>{index + 1}. {ex.name}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <Text style={{ color: THEME.accent, fontWeight: '700', marginRight: 6 }}>{ex.defaultSets}S</Text>
                       <Ionicons name="close-circle-sharp" size={16} color="#EF4444" />
@@ -749,8 +880,8 @@ export default function App() {
                 ))}
               </View>
 
-              <TouchableOpacity style={[styles.primaryButton, { marginTop: 24 }]} onPress={handleCreateRoutine}>
-                <Text style={styles.primaryButtonText}>Compile Blueprint Routine</Text>
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 24 }]} onPress={handleCreateOrUpdateRoutine}>
+                <Text style={styles.primaryButtonText}>{editingRoutineId ? 'Save Plan Customizations' : 'Compile Blueprint Routine'}</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -762,8 +893,10 @@ export default function App() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Link Assignment to {selectedScheduleDay}</Text>
-              <TouchableOpacity onPress={() => setSchedulerModalVisible(false)}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.modalTitle}>Link Assignment to {selectedScheduleDay}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSchedulerModalVisible(false)} style={{ padding: 4 }}>
                 <Ionicons name="close" size={24} color={THEME.text} />
               </TouchableOpacity>
             </View>
@@ -796,11 +929,11 @@ export default function App() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <View>
+              <View style={{ flex: 1, marginRight: 10 }}>
                 <Text style={styles.modalTitle}>Historical Performance Log</Text>
                 <Text style={{ color: THEME.textMuted, fontSize: 13, marginTop: 2 }}>{selectedHistoryDate}</Text>
               </View>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)}>
+              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} style={{ padding: 4 }}>
                 <Ionicons name="close" size={24} color={THEME.text} />
               </TouchableOpacity>
             </View>
@@ -943,6 +1076,29 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     alignSelf: 'flex-start',
   },
+  completedBannerCard: {
+    backgroundColor: THEME.surface,
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: THEME.success,
+    marginBottom: 14,
+  },
+  completedBannerTitle: {
+    color: THEME.text,
+    fontSize: 18,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  completedBannerMuted: {
+    color: THEME.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
+    lineHeight: 19,
+  },
   toggleCard: {
     backgroundColor: THEME.surface,
     borderRadius: 14,
@@ -979,24 +1135,30 @@ const styles = StyleSheet.create({
     color: THEME.text,
     fontSize: 15,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  setCell: {
+  logMetricsRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  columnLabel: {
     color: THEME.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     textAlign: 'center',
+    opacity: 0.6,
   },
   setCheckBtn: {
-    width: 28,
-    height: 28,
+    width: 35,
+    height: 32,
     borderRadius: 6,
     backgroundColor: THEME.surface,
     borderWidth: 1,
     borderColor: THEME.border,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 4,
+    marginRight: 8,
   },
   setCheckBtnActive: {
     backgroundColor: THEME.success,
@@ -1008,21 +1170,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   rowCompletedHighlight: {
-    opacity: 0.8,
+    opacity: 0.65,
   },
-  logInput: {
-    flex: 1,
+  logInputCompact: {
     backgroundColor: THEME.surface,
     borderColor: THEME.border,
     borderWidth: 1,
     borderRadius: 6,
     color: THEME.text,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
     textAlign: 'center',
-    marginHorizontal: 4,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    width: '100%',
   },
   logInputDisabled: {
     backgroundColor: THEME.successMuted,
@@ -1132,7 +1293,7 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 20,
   },
   modalTitle: {
