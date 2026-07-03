@@ -31,23 +31,19 @@ const THEME = {
 };
 
 const ROUTINE_COLORS = {
-  Blue: '#3B82F6',   // Chest / Push
-  Red: '#EF4444',    // Back / Pull
-  Green: '#10B981',  // Legs
-  Purple: '#8B5CF6', // Arms / Shoulders
-  Yellow: '#F59E0B', // Cardio / Core
-  Gray: '#6B7280',   // Flexible / Custom / Rest
+  Blue: '#3B82F6',   
+  Red: '#EF4444',    
+  Green: '#10B981',  
+  Purple: '#8B5CF6', 
+  Yellow: '#F59E0B', 
+  Gray: '#6B7280',   
 };
 
-// Top 10 exercises per muscle group + your highly requested bodyweight items
 const BASE_EXERCISE_POOL = [
-  // Pull-ups / Chin-ups / Dips Explicit Entries
   'Pull-ups (Bodyweight / Weighted)',
   'Chin-ups (Bodyweight / Weighted)',
   'Dips (Chest Focus)',
   'Dips (Triceps Focus)',
-  
-  // Chest
   'Flat Bench Press (Barbell)',
   'Incline Dumbbell Press',
   'Decline Barbell Press',
@@ -58,8 +54,6 @@ const BASE_EXERCISE_POOL = [
   'Pec Deck Flys',
   'Incline Barbell Press',
   'Hammer Strength Chest Press',
-
-  // Back
   'Lat Pulldown (Wide Grip)',
   'Barbell Rows',
   'One-Arm Dumbbell Rows',
@@ -70,8 +64,6 @@ const BASE_EXERCISE_POOL = [
   'Rack Pulls',
   'Straight-Arm Cable Pulldowns',
   'Seated Row (Wide Grip)',
-
-  // Shoulders
   'Overhead Press (Barbell)',
   'Seated Dumbbell Shoulder Press',
   'Lateral Raises (Dumbbell)',
@@ -82,8 +74,6 @@ const BASE_EXERCISE_POOL = [
   'Upright Rows (Barbell / Cable)',
   'Face Pulls (Rope)',
   'Push Press',
-
-  // Biceps
   'Barbell Curls',
   'Dumbbell Alternating Curls',
   'Hammer Curls',
@@ -94,8 +84,6 @@ const BASE_EXERCISE_POOL = [
   'Spider Curls',
   'Bayesian Curls',
   'Zottman Curls',
-
-  // Triceps
   'Overhead Tricep Extension (Dumbbell)',
   'Tricep Rope Pushdowns',
   'Skull Crushers (EZ Bar)',
@@ -105,8 +93,6 @@ const BASE_EXERCISE_POOL = [
   'Tricep Dumbbell Kickbacks',
   'Bench Dips',
   'Machine Tricep Pressdown',
-
-  // Legs
   'Back Squat (Barbell)',
   'Leg Press',
   'Romanian Deadlift (Barbell / Dumbbell)',
@@ -117,8 +103,6 @@ const BASE_EXERCISE_POOL = [
   'Bulgarian Split Squats',
   'Standing Calf Raises',
   'Hip Thrusts (Barbell)',
-
-  // Core / Abs
   'Plank (Standard / Weighted)',
   'Abdominal Crunches',
   'Hanging Leg Raises',
@@ -137,7 +121,8 @@ const STORAGE_KEYS = {
   ROUTINES: '@kat_tracker_routines_v3',
   SCHEDULE: '@kat_tracker_schedule_v3',
   HISTORY: '@kat_tracker_history_v3',
-  CUSTOM_EX_POOL: '@kat_tracker_custom_pool_v3'
+  CUSTOM_EX_POOL: '@kat_tracker_custom_pool_v3',
+  ADDICTIONS: '@kat_tracker_addictions_v3'
 };
 
 // --- UTILITY FUNCTIONS ---
@@ -185,6 +170,7 @@ export default function App() {
   });
   const [history, setHistory] = useState({});
   const [customExercisePool, setCustomExercisePool] = useState([]);
+  const [addictions, setAddictions] = useState([]); // Addiction Tracker Core State
   const [loading, setLoading] = useState(true);
 
   // --- SUB-SCREEN CONTROLLER STATES ---
@@ -212,6 +198,11 @@ export default function App() {
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null);
 
+  // Addiction Creator State
+  const [addictionModalVisible, setAddictionModalVisible] = useState(false);
+  const [newAddictionName, setNewAddictionName] = useState('');
+  const [newAddictionColor, setNewAddictionColor] = useState('Red');
+
   useEffect(() => {
     loadData();
   }, []);
@@ -222,11 +213,13 @@ export default function App() {
       const storedSchedule = await AsyncStorage.getItem(STORAGE_KEYS.SCHEDULE);
       const storedHistory = await AsyncStorage.getItem(STORAGE_KEYS.HISTORY);
       const storedCustomEx = await AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_EX_POOL);
+      const storedAddictions = await AsyncStorage.getItem(STORAGE_KEYS.ADDICTIONS);
 
       if (storedRoutines) setRoutines(JSON.parse(storedRoutines));
       if (storedSchedule) setSchedule(JSON.parse(storedSchedule));
       if (storedHistory) setHistory(JSON.parse(storedHistory));
       if (storedCustomEx) setCustomExercisePool(JSON.parse(storedCustomEx));
+      if (storedAddictions) setAddictions(JSON.parse(storedAddictions));
     } catch (e) {
       Alert.alert('Error', 'Failed to load local tracking data.');
     } finally {
@@ -242,25 +235,21 @@ export default function App() {
     }
   };
 
-  // Combine default base items with learned user modifications
   const combinedExercisePool = useMemo(() => {
     return [...new Set([...BASE_EXERCISE_POOL, ...customExercisePool])];
   }, [customExercisePool]);
 
-  // Track if today has already been logged inside tracking metrics
   const isTodayCompleted = useMemo(() => {
     const todayStr = getLocalDateString();
     return !!history[todayStr];
   }, [history]);
 
-  // --- BUSINESS ENGINE HANDLERS ---
+  // --- WORKOUT BUSINESS ENGINE HANDLERS ---
   const handleCreateOrUpdateRoutine = () => {
     if (!newRoutineName.trim()) return Alert.alert('Invalid Input', 'Provide a name for your routine.');
 
     let updatedRoutines;
-
     if (editingRoutineId) {
-      // Editing existing blueprint
       updatedRoutines = routines.map(r => r.id === editingRoutineId ? {
         ...r,
         name: newRoutineName,
@@ -269,7 +258,6 @@ export default function App() {
         exercises: newRoutineExercises
       } : r);
     } else {
-      // Creating an entirely brand-new blueprint entry
       const newRoutine = {
         id: Date.now().toString(),
         name: newRoutineName,
@@ -282,7 +270,6 @@ export default function App() {
 
     setRoutines(updatedRoutines);
     saveData(STORAGE_KEYS.ROUTINES, updatedRoutines);
-
     handleCloseRoutineModal();
   };
 
@@ -320,7 +307,7 @@ export default function App() {
     };
 
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm('Are you sure you want to delete this blueprint? This unlinks it from your schedule fields.');
+      const confirmed = window.confirm('Are you sure you want to delete this blueprint?');
       if (confirmed) performDelete();
     } else {
       Alert.alert('Delete Routine', 'Are you sure? This unlinks the routine from your schedule metrics.', [
@@ -341,7 +328,6 @@ export default function App() {
       defaultSets: setsCount
     };
 
-    // Auto-learn routine system verification check
     const itemExists = combinedExercisePool.some(item => item.toLowerCase() === exerciseName.toLowerCase());
     if (!itemExists) {
       const updatedCustomPool = [...customExercisePool, exerciseName];
@@ -369,7 +355,7 @@ export default function App() {
     const scheduledId = schedule[day];
     const foundScheduled = routines.find(r => r.id === scheduledId);
     return foundScheduled || impromptuRoutine;
-  }, [schedule, routines, impromptuRoutine, currentTab]);
+  }, [schedule, routines, impromptuRoutine]);
 
   useEffect(() => {
     if (currentActiveRoutine) {
@@ -432,6 +418,63 @@ export default function App() {
     setIsGymDayChecked(false);
     setImpromptuRoutine(null);
     setCurrentTab('history');
+  };
+
+  // --- ADDICTIONS ENGINE HANDLERS ---
+  const handleCreateAddiction = () => {
+    if (!newAddictionName.trim()) return Alert.alert('Invalid Input', 'Please state your tracker focus name.');
+
+    const newTracker = {
+      id: Date.now().toString(),
+      name: newAddictionName.trim(),
+      color: ROUTINE_COLORS[newAddictionColor],
+      colorName: newAddictionColor,
+      history: {} // Map structure stores clean day entries: { "2026-07-03": true }
+    };
+
+    const updated = [...addictions, newTracker];
+    setAddictions(updated);
+    saveData(STORAGE_KEYS.ADDICTIONS, updated);
+    
+    setNewAddictionName('');
+    setNewAddictionColor('Red');
+    setAddictionModalVisible(false);
+  };
+
+  const handleToggleCleanDay = (trackerId) => {
+    const todayStr = getLocalDateString();
+    const updated = addictions.map(item => {
+      if (item.id === trackerId) {
+        const historyCopy = { ...item.history };
+        if (historyCopy[todayStr]) {
+          delete historyCopy[todayStr]; // Untoggle if clicked again
+        } else {
+          historyCopy[todayStr] = true; // Flag success
+        }
+        return { ...item, history: historyCopy };
+      }
+      return item;
+    });
+
+    setAddictions(updated);
+    saveData(STORAGE_KEYS.ADDICTIONS, updated);
+  };
+
+  const handleDeleteAddiction = (trackerId) => {
+    const confirmWipe = () => {
+      const updated = addictions.filter(a => a.id !== trackerId);
+      setAddictions(updated);
+      saveData(STORAGE_KEYS.ADDICTIONS, updated);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete this clean record tracker permanently?')) confirmWipe();
+    } else {
+      Alert.alert('Remove Tracker', 'This will delete this habit track record completely.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete Track', style: 'destructive', onPress: confirmWipe }
+      ]);
+    }
   };
 
   const filteredSuggestions = useMemo(() => {
@@ -628,7 +671,7 @@ export default function App() {
               <View style={[styles.card, { alignItems: 'center', paddingVertical: 40 }]}>
                 <Ionicons name="layers-outline" size={48} color={THEME.textMuted} />
                 <Text style={[styles.cardTitle, { marginTop: 12 }]}>No Blueprints Found</Text>
-                <Text style={[styles.cardMutedText, { textAlign: 'center' }]}>Create target training configs using the create button above. Empty sets can represent structural Rest Days!</Text>
+                <Text style={[styles.cardMutedText, { textAlign: 'center' }]}>Create target training configs using the create button above.</Text>
               </View>
             ) : (
               routines.map(item => (
@@ -667,7 +710,7 @@ export default function App() {
         {currentTab === 'schedule' && (
           <View>
             <Text style={styles.viewTitle}>Weekly Planner Calendar</Text>
-            <Text style={[styles.cardMutedText, { marginBottom: 16 }]}>Map specific routine items to target days. Days without explicit maps remain flexible on-the-fly tracks.</Text>
+            <Text style={[styles.cardMutedText, { marginBottom: 16 }]}>Map specific routine items to target days.</Text>
             
             {DAYS_OF_WEEK.map(day => {
               const assignedId = schedule[day];
@@ -736,15 +779,6 @@ export default function App() {
                   ))}
                 </View>
               </ScrollView>
-              
-              <View style={[styles.row, { marginTop: 12, justifyContent: 'flex-start', flexWrap: 'wrap' }]}>
-                {Object.keys(ROUTINE_COLORS).map(key => (
-                  <View key={key} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10, marginTop: 4 }}>
-                    <View style={[styles.heatmapSquare, { width: 10, height: 10, margin: 0, marginRight: 4, backgroundColor: ROUTINE_COLORS[key] }]} />
-                    <Text style={{ color: THEME.textMuted, fontSize: 11 }}>{key}</Text>
-                  </View>
-                ))}
-              </View>
             </View>
 
             <Text style={[styles.viewTitle, { fontSize: 16, marginTop: 12 }]}>Chronological Records</Text>
@@ -766,6 +800,100 @@ export default function App() {
                   </View>
                 </TouchableOpacity>
               ))
+            )}
+          </View>
+        )}
+
+        {/* --- VIEW 5: NEW ADDICTIONS / CLEAN HABIT TRACKER TAB --- */}
+        {currentTab === 'clean' && (
+          <View>
+            <View style={styles.rowBetween}>
+              <Text style={styles.viewTitle}>Clean Trackers</Text>
+              <TouchableOpacity style={styles.addButtonSmall} onPress={() => setAddictionModalVisible(true)}>
+                <Ionicons name="add" size={20} color={THEME.text} />
+                <Text style={{ color: THEME.text, fontWeight: '600', marginLeft: 2 }}>Add New</Text>
+              </TouchableOpacity>
+            </View>
+
+            {addictions.length === 0 ? (
+              <View style={[styles.card, { alignItems: 'center', paddingVertical: 40 }]}>
+                <Ionicons name="shield-checkmark-outline" size={48} color={THEME.textMuted} />
+                <Text style={[styles.cardTitle, { marginTop: 12 }]}>No Clean Trackers Active</Text>
+                <Text style={[styles.cardMutedText, { textAlign: 'center', paddingHorizontal: 20 }]}>
+                  Set up a sobriety or clean tracker for habits like alcohol, smoking, or caffeine using the Add New button above!
+                </Text>
+              </View>
+            ) : (
+              addictions.map((item) => {
+                const todayStr = getLocalDateString();
+                const isCleanToday = !!item.history[todayStr];
+                const cleanDaysCount = Object.keys(item.history).length;
+
+                return (
+                  <View key={item.id} style={[styles.card, { borderLeftWidth: 5, borderLeftColor: item.color }]}>
+                    <View style={styles.rowBetween}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.cardTitle}>{item.name}</Text>
+                        <Text style={[styles.cardMutedText, { color: item.color, fontWeight: '700' }]}>
+                          Total Logged Safe Days: {cleanDaysCount}
+                        </Text>
+                      </View>
+                      <TouchableOpacity onPress={() => handleDeleteAddiction(item.id)} style={{ padding: 6 }}>
+                        <Ionicons name="trash-outline" size={18} color={THEME.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* DAILY CHECK IN ACTION BUTTON */}
+                    <TouchableOpacity 
+                      style={[
+                        styles.cleanCheckInBtn, 
+                        { borderColor: item.color },
+                        isCleanToday && { backgroundColor: item.color + '22' }
+                      ]}
+                      onPress={() => handleToggleCleanDay(item.id)}
+                    >
+                      <Ionicons 
+                        name={isCleanToday ? "checkmark-circle" : "ellipse-outline"} 
+                        size={20} 
+                        color={isCleanToday ? item.color : THEME.textMuted} 
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text style={{ color: isCleanToday ? THEME.text : THEME.textMuted, fontWeight: '700', fontSize: 13 }}>
+                        {isCleanToday ? "Safe & Clean Today!" : "Mark Clean For Today"}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* TARGET ISOLATED HEATMAP GRAPH */}
+                    <Text style={[styles.cardMutedText, { fontSize: 11, marginTop: 14, marginBottom: 6, fontWeight: '600' }]}>
+                      Sobriety Consistency Matrix Grid:
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 4 }}>
+                      <View style={{ flexDirection: 'row' }}>
+                        {generateHeatmapDates().map((weekArray, wIdx) => (
+                          <View key={wIdx} style={{ flexDirection: 'column' }}>
+                            {weekArray.map((dateStr) => {
+                              const markedClean = !!item.history[dateStr];
+                              const cellBg = markedClean ? item.color : THEME.surfaceLight;
+                              const isTodayCell = dateStr === todayStr;
+
+                              return (
+                                <View
+                                  key={dateStr}
+                                  style={[
+                                    styles.heatmapSquare, 
+                                    { backgroundColor: cellBg, width: 12, height: 12, margin: 1.5 },
+                                    isTodayCell && { borderWidth: 1, borderColor: THEME.text }
+                                  ]}
+                                />
+                              );
+                            })}
+                          </View>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                );
+              })
             )}
           </View>
         )}
@@ -840,7 +968,6 @@ export default function App() {
                   </TouchableOpacity>
                 </View>
 
-                {/* AUTOCOMPLETE SUGGESTIONS (Includes newly discovered tracking metrics) */}
                 {showSuggestions && filteredSuggestions.length > 0 && (
                   <View style={styles.suggestionsBox}>
                     {filteredSuggestions.slice(0, 5).map((suggestion) => (
@@ -860,9 +987,6 @@ export default function App() {
               </View>
 
               <View style={{ marginTop: 12 }}>
-                {newRoutineExercises.length > 0 && (
-                  <Text style={[styles.cardMutedText, { marginBottom: 6, fontSize: 11 }]}>Tip: Tap an added exercise to remove it.</Text>
-                )}
                 {newRoutineExercises.map((ex, index) => (
                   <TouchableOpacity 
                     key={ex.id} 
@@ -906,12 +1030,12 @@ export default function App() {
                 style={[styles.scheduleRow, { backgroundColor: THEME.surfaceLight }]}
                 onPress={() => handleAssignSchedule(null)}
               >
-                <Text style={{ color: THEME.textMuted, fontWeight: '600' }}>Clear Track Mappings (Keep Day Flexible)</Text>
+                <Text style={{ color: THEME.textMuted, fontWeight: '600' }}>Clear Track Mappings</Text>
               </TouchableOpacity>
               
               {routines.map(r => (
                 <TouchableOpacity 
-                   key={r.id} 
+                  key={r.id} 
                   style={[styles.scheduleRow, { borderLeftWidth: 4, borderLeftColor: r.color }]}
                   onPress={() => handleAssignSchedule(r.id)}
                 >
@@ -966,7 +1090,6 @@ export default function App() {
                 <View style={{ alignItems: 'center', paddingVertical: 30 }}>
                   <Ionicons name="ellipse-outline" size={44} color={THEME.textMuted} />
                   <Text style={{ color: THEME.text, fontSize: 16, fontWeight: '600', marginTop: 12 }}>No Record On This Date</Text>
-                  <Text style={{ color: THEME.textMuted, textAlign: 'center', marginTop: 4 }}>This calendar graph block shows an unlogged tracking cell window.</Text>
                 </View>
               )}
             </ScrollView>
@@ -974,26 +1097,77 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* --- BOTTOM NAVIGATION LAYOUT STRIP --- */}
+      {/* 4. NEW ADDICTIONS GENERATOR MODAL */}
+      <Modal animationType="slide" transparent visible={addictionModalVisible} onRequestClose={() => setAddictionModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Launch Sobriety Clean Tracker</Text>
+              </View>
+              <TouchableOpacity onPress={() => setAddictionModalVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={24} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView>
+              <Text style={styles.inputLabel}>Tracker Focus Goal Name</Text>
+              <TextInput 
+                style={styles.textInput} 
+                placeholder="e.g. Alcohol, Smoking, Fast Food" 
+                placeholderTextColor="#666"
+                value={newAddictionName}
+                onChangeText={setNewAddictionName}
+              />
+
+              <Text style={styles.inputLabel}>Grid Matrix Color Tag Identity</Text>
+              <View style={[styles.row, { justifyContent: 'space-around', marginVertical: 14 }]}>
+                {Object.keys(ROUTINE_COLORS).map((colorKey) => (
+                  <TouchableOpacity
+                    key={colorKey}
+                    style={[
+                      styles.colorSelectorCircle, 
+                      { backgroundColor: ROUTINE_COLORS[colorKey] },
+                      newAddictionColor === colorKey && styles.colorSelectorCircleSelected
+                    ]}
+                    onPress={() => setNewAddictionColor(colorKey)}
+                  />
+                ))}
+              </View>
+
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 16 }]} onPress={handleCreateAddiction}>
+                <Text style={styles.primaryButtonText}>Initialize Clean Track Grid</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* --- BOTTOM NAVIGATION LAYOUT STRIP (Now accommodating 5 links nicely) --- */}
       <View style={styles.tabBar}>
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('today')}>
-          <Ionicons name="barbell-outline" size={22} color={currentTab === 'today' ? THEME.accent : THEME.textMuted} />
+          <Ionicons name="barbell-outline" size={20} color={currentTab === 'today' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'today' && styles.tabLabelActive]}>Today</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('routines')}>
-          <Ionicons name="list-outline" size={22} color={currentTab === 'routines' ? THEME.accent : THEME.textMuted} />
+          <Ionicons name="list-outline" size={20} color={currentTab === 'routines' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'routines' && styles.tabLabelActive]}>Routines</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('schedule')}>
-          <Ionicons name="calendar-outline" size={22} color={currentTab === 'schedule' ? THEME.accent : THEME.textMuted} />
+          <Ionicons name="calendar-outline" size={20} color={currentTab === 'schedule' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'schedule' && styles.tabLabelActive]}>Schedule</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('history')}>
-          <Ionicons name="analytics-outline" size={22} color={currentTab === 'history' ? THEME.accent : THEME.textMuted} />
+          <Ionicons name="analytics-outline" size={20} color={currentTab === 'history' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'history' && styles.tabLabelActive]}>History</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('clean')}>
+          <Ionicons name="shield-checkmark-outline" size={20} color={currentTab === 'clean' ? THEME.accent : THEME.textMuted} />
+          <Text style={[styles.tabLabel, currentTab === 'clean' && styles.tabLabelActive]}>Clean</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -1247,6 +1421,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 6,
   },
+  cleanCheckInBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    marginTop: 14,
+  },
   tabBar: {
     position: 'absolute',
     bottom: 0,
@@ -1268,7 +1451,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     color: THEME.textMuted,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
     marginTop: 2,
   },
