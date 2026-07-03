@@ -170,8 +170,12 @@ export default function App() {
   });
   const [history, setHistory] = useState({});
   const [customExercisePool, setCustomExercisePool] = useState([]);
-  const [addictions, setAddictions] = useState([]); // Addiction Tracker Core State
+  const [addictions, setAddictions] = useState([]); 
   const [loading, setLoading] = useState(true);
+
+  // --- REST TIMER STATE ENGINE ---
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [timerActive, setTimerActive] = useState(false);
 
   // --- SUB-SCREEN CONTROLLER STATES ---
   const [isGymDayChecked, setIsGymDayChecked] = useState(false);
@@ -202,6 +206,22 @@ export default function App() {
   const [addictionModalVisible, setAddictionModalVisible] = useState(false);
   const [newAddictionName, setNewAddictionName] = useState('');
   const [newAddictionColor, setNewAddictionColor] = useState('Red');
+
+  // Timer Countdown Effect Loop
+  useEffect(() => {
+    let interval = null;
+    if (timerActive && timerSeconds > 0) {
+      interval = setInterval(() => {
+        setTimerSeconds((prev) => prev - 1);
+      }, 1000);
+    } else {
+      clearInterval(interval);
+      if (timerSeconds === 0) {
+        setTimerActive(false);
+      }
+    }
+    return () => clearInterval(interval);
+  }, [timerActive, timerSeconds]);
 
   useEffect(() => {
     loadData();
@@ -386,6 +406,17 @@ export default function App() {
     setActiveWorkoutLogs(updated);
   };
 
+  const handleTriggerTimer = () => {
+    setTimerSeconds(180); // 3 Minuten Countdown
+    setTimerActive(true);
+  };
+
+  const formatTimerString = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
   const handleSaveWorkoutSession = () => {
     if (!currentActiveRoutine) return;
     
@@ -417,6 +448,8 @@ export default function App() {
     Alert.alert('Success!', 'Workout metrics appended safely to history logs.');
     setIsGymDayChecked(false);
     setImpromptuRoutine(null);
+    setTimerSeconds(0);
+    setTimerActive(false);
     setCurrentTab('history');
   };
 
@@ -429,7 +462,7 @@ export default function App() {
       name: newAddictionName.trim(),
       color: ROUTINE_COLORS[newAddictionColor],
       colorName: newAddictionColor,
-      history: {} // Map structure stores clean day entries: { "2026-07-03": true }
+      history: {} 
     };
 
     const updated = [...addictions, newTracker];
@@ -447,9 +480,9 @@ export default function App() {
       if (item.id === trackerId) {
         const historyCopy = { ...item.history };
         if (historyCopy[todayStr]) {
-          delete historyCopy[todayStr]; // Untoggle if clicked again
+          delete historyCopy[todayStr]; 
         } else {
-          historyCopy[todayStr] = true; // Flag success
+          historyCopy[todayStr] = true; 
         }
         return { ...item, history: historyCopy };
       }
@@ -518,7 +551,7 @@ export default function App() {
               <View style={styles.completedBannerCard}>
                 <Ionicons name="checkmark-circle" size={44} color={THEME.success} style={{ marginBottom: 10 }} />
                 <Text style={styles.completedBannerTitle}>Workout Saved & Locked! 🎉</Text>
-                <Text style={styles.completedBannerMuted}>Today's tracking metrics are loaded securely into history logs. The logging panel will restore when tomorrow's training day begins.</Text>
+                <Text style={styles.completedBannerMuted}>Today's tracking metrics are loaded securely into history logs.</Text>
                 <TouchableOpacity style={[styles.primaryButton, { marginTop: 16, backgroundColor: THEME.surfaceLight }]} onPress={() => setCurrentTab('history')}>
                   <Text style={[styles.primaryButtonText, { color: THEME.text, fontSize: 13 }]}>Review Performance Log</Text>
                 </TouchableOpacity>
@@ -549,7 +582,7 @@ export default function App() {
                 ) : (
                   <View style={styles.card}>
                     <Text style={styles.cardTitle}>Unscheduled / Flexible Day 🔓</Text>
-                    <Text style={styles.cardMutedText}>No routine is locked into today's matrix. Want to train or run a rest check-in? Select a blueprint configuration on-the-fly below:</Text>
+                    <Text style={styles.cardMutedText}>No routine is locked into today's matrix. Select a blueprint configuration on-the-fly below:</Text>
                     
                     <View style={{ marginTop: 12 }}>
                       {routines.map(r => (
@@ -584,9 +617,25 @@ export default function App() {
 
                     {isGymDayChecked && (
                       <View style={{ marginTop: 20 }}>
+                        
+                        {/* DEZENTER SARTZ-PAUSEN-TIMER DISPLAY */}
+                        {timerSeconds > 0 && (
+                          <View style={styles.timerBanner}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Ionicons name="stopwatch" size={18} color={THEME.accent} style={{ marginRight: 6 }} />
+                              <Text style={styles.timerBannerText}>
+                                Satzpause läuft: <Text style={{ color: THEME.accent }}>{formatTimerString(timerSeconds)}</Text>
+                              </Text>
+                            </View>
+                            <TouchableOpacity style={styles.timerCancelBtn} onPress={() => { setTimerSeconds(0); setTimerActive(false); }}>
+                              <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 12 }}>Skip</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
                         {currentActiveRoutine.exercises.length === 0 ? (
                           <Text style={[styles.cardMutedText, { textAlign: 'center', marginVertical: 20 }]}>
-                            This is an empty rest/recovery block routine blueprint. You can commit it instantly below to log your active recovery tracking sequence!
+                            This is an empty rest/recovery block routine blueprint.
                           </Text>
                         ) : (
                           currentActiveRoutine.exercises.map((ex) => (
@@ -596,7 +645,8 @@ export default function App() {
                               <View style={[styles.logMetricsRowHeader, { marginBottom: 4 }]}>
                                 <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
                                 <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
-                                <Text style={[styles.columnLabel, { flex: 1 }]}>Reps Done</Text>
+                                <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>Reps Done</Text>
+                                <Text style={[styles.columnLabel, { width: 35 }]}>Timer</Text>
                               </View>
 
                               {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
@@ -626,7 +676,7 @@ export default function App() {
                                       />
                                     </View>
                                     
-                                    <View style={{ flex: 1 }}>
+                                    <View style={{ flex: 1, marginRight: 8 }}>
                                       <TextInput
                                         style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
                                         placeholder="0"
@@ -637,6 +687,14 @@ export default function App() {
                                         onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
                                       />
                                     </View>
+
+                                    {/* TIMER START BUTTON FOR INDIVIDUAL SET ROW */}
+                                    <TouchableOpacity 
+                                      style={[styles.inlineTimerBtn, timerActive && { borderColor: THEME.accentMuted }]} 
+                                      onPress={handleTriggerTimer}
+                                    >
+                                      <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
+                                    </TouchableOpacity>
                                   </View>
                                 );
                               })}
@@ -671,7 +729,6 @@ export default function App() {
               <View style={[styles.card, { alignItems: 'center', paddingVertical: 40 }]}>
                 <Ionicons name="layers-outline" size={48} color={THEME.textMuted} />
                 <Text style={[styles.cardTitle, { marginTop: 12 }]}>No Blueprints Found</Text>
-                <Text style={[styles.cardMutedText, { textAlign: 'center' }]}>Create target training configs using the create button above.</Text>
               </View>
             ) : (
               routines.map(item => (
@@ -710,12 +767,9 @@ export default function App() {
         {currentTab === 'schedule' && (
           <View>
             <Text style={styles.viewTitle}>Weekly Planner Calendar</Text>
-            <Text style={[styles.cardMutedText, { marginBottom: 16 }]}>Map specific routine items to target days.</Text>
-            
             {DAYS_OF_WEEK.map(day => {
               const assignedId = schedule[day];
               const routine = routines.find(r => r.id === assignedId);
-              
               return (
                 <TouchableOpacity 
                   key={day} 
@@ -748,7 +802,6 @@ export default function App() {
         {currentTab === 'history' && (
           <View>
             <Text style={styles.viewTitle}>Performance Analytics</Text>
-            
             <View style={styles.card}>
               <Text style={[styles.cardTitle, { fontSize: 14, marginBottom: 12 }]}>Consistency Heatmap Graph</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
@@ -759,7 +812,6 @@ export default function App() {
                         const metrics = history[dateStr];
                         const squareColor = metrics ? metrics.color : THEME.surfaceLight;
                         const isCurrentDay = dateStr === getLocalDateString();
-
                         return (
                           <TouchableOpacity
                             key={dateStr}
@@ -783,7 +835,7 @@ export default function App() {
 
             <Text style={[styles.viewTitle, { fontSize: 16, marginTop: 12 }]}>Chronological Records</Text>
             {Object.keys(history).length === 0 ? (
-              <Text style={[styles.cardMutedText, { marginTop: 8 }]}>No completed workout tracks saved inside system memory storage files.</Text>
+              <Text style={[styles.cardMutedText, { marginTop: 8 }]}>No completed workout tracks saved inside system memory.</Text>
             ) : (
               Object.keys(history).sort((a,b) => b.localeCompare(a)).map(dateStr => (
                 <TouchableOpacity 
@@ -804,7 +856,7 @@ export default function App() {
           </View>
         )}
 
-        {/* --- VIEW 5: NEW ADDICTIONS / CLEAN HABIT TRACKER TAB --- */}
+        {/* --- VIEW 5: CLEAN HABIT TRACKER TAB --- */}
         {currentTab === 'clean' && (
           <View>
             <View style={styles.rowBetween}>
@@ -819,16 +871,12 @@ export default function App() {
               <View style={[styles.card, { alignItems: 'center', paddingVertical: 40 }]}>
                 <Ionicons name="shield-checkmark-outline" size={48} color={THEME.textMuted} />
                 <Text style={[styles.cardTitle, { marginTop: 12 }]}>No Clean Trackers Active</Text>
-                <Text style={[styles.cardMutedText, { textAlign: 'center', paddingHorizontal: 20 }]}>
-                  Set up a sobriety or clean tracker for habits like alcohol, smoking, or caffeine using the Add New button above!
-                </Text>
               </View>
             ) : (
               addictions.map((item) => {
                 const todayStr = getLocalDateString();
                 const isCleanToday = !!item.history[todayStr];
                 const cleanDaysCount = Object.keys(item.history).length;
-
                 return (
                   <View key={item.id} style={[styles.card, { borderLeftWidth: 5, borderLeftColor: item.color }]}>
                     <View style={styles.rowBetween}>
@@ -843,48 +891,28 @@ export default function App() {
                       </TouchableOpacity>
                     </View>
 
-                    {/* DAILY CHECK IN ACTION BUTTON */}
                     <TouchableOpacity 
-                      style={[
-                        styles.cleanCheckInBtn, 
-                        { borderColor: item.color },
-                        isCleanToday && { backgroundColor: item.color + '22' }
-                      ]}
+                      style={[styles.cleanCheckInBtn, { borderColor: item.color }, isCleanToday && { backgroundColor: item.color + '22' }]}
                       onPress={() => handleToggleCleanDay(item.id)}
                     >
-                      <Ionicons 
-                        name={isCleanToday ? "checkmark-circle" : "ellipse-outline"} 
-                        size={20} 
-                        color={isCleanToday ? item.color : THEME.textMuted} 
-                        style={{ marginRight: 8 }}
-                      />
+                      <Ionicons name={isCleanToday ? "checkmark-circle" : "ellipse-outline"} size={20} color={isCleanToday ? item.color : THEME.textMuted} style={{ marginRight: 8 }} />
                       <Text style={{ color: isCleanToday ? THEME.text : THEME.textMuted, fontWeight: '700', fontSize: 13 }}>
                         {isCleanToday ? "Safe & Clean Today!" : "Mark Clean For Today"}
                       </Text>
                     </TouchableOpacity>
 
-                    {/* TARGET ISOLATED HEATMAP GRAPH */}
                     <Text style={[styles.cardMutedText, { fontSize: 11, marginTop: 14, marginBottom: 6, fontWeight: '600' }]}>
                       Sobriety Consistency Matrix Grid:
                     </Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 4 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       <View style={{ flexDirection: 'row' }}>
                         {generateHeatmapDates().map((weekArray, wIdx) => (
                           <View key={wIdx} style={{ flexDirection: 'column' }}>
                             {weekArray.map((dateStr) => {
                               const markedClean = !!item.history[dateStr];
                               const cellBg = markedClean ? item.color : THEME.surfaceLight;
-                              const isTodayCell = dateStr === todayStr;
-
                               return (
-                                <View
-                                  key={dateStr}
-                                  style={[
-                                    styles.heatmapSquare, 
-                                    { backgroundColor: cellBg, width: 12, height: 12, margin: 1.5 },
-                                    isTodayCell && { borderWidth: 1, borderColor: THEME.text }
-                                  ]}
-                                />
+                                <View key={dateStr} style={[styles.heatmapSquare, { backgroundColor: cellBg, width: 12, height: 12, margin: 1.5 }, dateStr === todayStr && { borderWidth: 1, borderColor: THEME.text }]} />
                               );
                             })}
                           </View>
@@ -900,271 +928,144 @@ export default function App() {
       </ScrollView>
 
       {/* --- MODALS --- */}
-
-      {/* 1. BLUEPRINT CREATOR / EDITOR MODAL */}
+      {/* 1. BLUEPRINT CREATOR */}
       <Modal animationType="slide" transparent visible={routineModalVisible} onRequestClose={handleCloseRoutineModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={styles.modalTitle}>{editingRoutineId ? 'Modify Plan Blueprint' : 'New Workout Blueprint'}</Text>
-              </View>
+              <Text style={styles.modalTitle}>{editingRoutineId ? 'Modify Plan Blueprint' : 'New Workout Blueprint'}</Text>
               <TouchableOpacity onPress={handleCloseRoutineModal} style={{ padding: 4 }}>
                 <Ionicons name="close" size={24} color={THEME.text} />
               </TouchableOpacity>
             </View>
-
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.inputLabel}>Routine Identification Name</Text>
-              <TextInput 
-                style={styles.textInput} 
-                placeholder="e.g. Legs or Recovery Restday" 
-                placeholderTextColor="#666"
-                value={newRoutineName}
-                onChangeText={setNewRoutineName}
-              />
-
+              <TextInput style={styles.textInput} placeholder="e.g. Legs" placeholderTextColor="#666" value={newRoutineName} onChangeText={setNewRoutineName} />
               <Text style={styles.inputLabel}>Theme Display Color Map Tag</Text>
               <View style={[styles.row, { justifyContent: 'space-around', marginVertical: 10 }]}>
                 {Object.keys(ROUTINE_COLORS).map((colorKey) => (
-                  <TouchableOpacity
-                    key={colorKey}
-                    style={[
-                      styles.colorSelectorCircle, 
-                      { backgroundColor: ROUTINE_COLORS[colorKey] },
-                      newRoutineColor === colorKey && styles.colorSelectorCircleSelected
-                    ]}
-                    onPress={() => setNewRoutineColor(colorKey)}
-                  />
+                  <TouchableOpacity key={colorKey} style={[styles.colorSelectorCircle, { backgroundColor: ROUTINE_COLORS[colorKey] }, newRoutineColor === colorKey && styles.colorSelectorCircleSelected]} onPress={() => setNewRoutineColor(colorKey)} />
                 ))}
               </View>
-
-              <Text style={styles.inputLabel}>Append Component Exercises ({newRoutineExercises.length} staged)</Text>
-              
+              <Text style={styles.inputLabel}>Append Component Exercises</Text>
               <View style={{ zIndex: 999 }}>
                 <View style={styles.row}>
-                  <View style={{ flex: 2, marginRight: 8 }}>
-                    <TextInput 
-                      style={styles.textInput} 
-                      placeholder="Search or type custom..." 
-                      placeholderTextColor="#666"
-                      value={exInput}
-                      onChangeText={(txt) => { setExInput(txt); setShowSuggestions(true); }}
-                      onFocus={() => setShowSuggestions(true)}
-                    />
-                  </View>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <TextInput 
-                      style={styles.textInput} 
-                      placeholder="Sets" 
-                      placeholderTextColor="#666"
-                      keyboardType="numeric"
-                      value={exSetsInput}
-                      onChangeText={setExSetsInput}
-                    />
-                  </View>
-                  <TouchableOpacity style={styles.inlineAddBtn} onPress={handleAddExerciseToCreator}>
-                    <Ionicons name="add" size={24} color={THEME.text} />
-                  </TouchableOpacity>
+                  <View style={{ flex: 2, marginRight: 8 }}><TextInput style={styles.textInput} placeholder="Search exercise..." placeholderTextColor="#666" value={exInput} onChangeText={(txt) => { setExInput(txt); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} /></View>
+                  <View style={{ flex: 1, marginRight: 8 }}><TextInput style={styles.textInput} placeholder="Sets" placeholderTextColor="#666" keyboardType="numeric" value={exSetsInput} onChangeText={setExSetsInput} /></View>
+                  <TouchableOpacity style={styles.inlineAddBtn} onPress={handleAddExerciseToCreator}><Ionicons name="add" size={24} color={THEME.text} /></TouchableOpacity>
                 </View>
-
                 {showSuggestions && filteredSuggestions.length > 0 && (
                   <View style={styles.suggestionsBox}>
                     {filteredSuggestions.slice(0, 5).map((suggestion) => (
-                      <TouchableOpacity 
-                        key={suggestion} 
-                        style={styles.suggestionItem}
-                        onPress={() => {
-                          setExInput(suggestion);
-                          setShowSuggestions(false);
-                        }}
-                      >
-                        <Text style={{ color: THEME.text }}>{suggestion}</Text>
-                      </TouchableOpacity>
+                      <TouchableOpacity key={suggestion} style={styles.suggestionItem} onPress={() => { setExInput(suggestion); setShowSuggestions(false); }}><Text style={{ color: THEME.text }}>{suggestion}</Text></TouchableOpacity>
                     ))}
                   </View>
                 )}
               </View>
-
               <View style={{ marginTop: 12 }}>
                 {newRoutineExercises.map((ex, index) => (
-                  <TouchableOpacity 
-                    key={ex.id} 
-                    style={styles.stagingExRowInteractive} 
-                    onPress={() => {
-                      setNewRoutineExercises(newRoutineExercises.filter(e => e.id !== ex.id));
-                    }}
-                  >
-                    <Text style={{ color: THEME.text, fontWeight: '500', flex: 1, marginRight: 6 }}>{index + 1}. {ex.name}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={{ color: THEME.accent, fontWeight: '700', marginRight: 6 }}>{ex.defaultSets}S</Text>
-                      <Ionicons name="close-circle-sharp" size={16} color="#EF4444" />
-                    </View>
+                  <TouchableOpacity key={ex.id} style={styles.stagingExRowInteractive} onPress={() => setNewRoutineExercises(newRoutineExercises.filter(e => e.id !== ex.id))}>
+                    <Text style={{ color: THEME.text, fontWeight: '500', flex: 1 }}>{index + 1}. {ex.name}</Text>
+                    <Text style={{ color: THEME.accent, fontWeight: '700', marginRight: 6 }}>{ex.defaultSets}S</Text>
+                    <Ionicons name="close-circle-sharp" size={16} color="#EF4444" />
                   </TouchableOpacity>
                 ))}
               </View>
-
-              <TouchableOpacity style={[styles.primaryButton, { marginTop: 24 }]} onPress={handleCreateOrUpdateRoutine}>
-                <Text style={styles.primaryButtonText}>{editingRoutineId ? 'Save Plan Customizations' : 'Compile Blueprint Routine'}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 24 }]} onPress={handleCreateOrUpdateRoutine}><Text style={styles.primaryButtonText}>Compile Blueprint Routine</Text></TouchableOpacity>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* 2. SCHEDULER ATTACHMENT ACTION SHEET */}
+      {/* 2. SCHEDULER */}
       <Modal animationType="fade" transparent visible={schedulerModalVisible} onRequestClose={() => setSchedulerModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={styles.modalTitle}>Link Assignment to {selectedScheduleDay}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setSchedulerModalVisible(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={24} color={THEME.text} />
-              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Link Assignment to {selectedScheduleDay}</Text>
+              <TouchableOpacity onPress={() => setSchedulerModalVisible(false)} style={{ padding: 4 }}><Ionicons name="close" size={24} color={THEME.text} /></TouchableOpacity>
             </View>
-
             <ScrollView>
-              <TouchableOpacity 
-                style={[styles.scheduleRow, { backgroundColor: THEME.surfaceLight }]}
-                onPress={() => handleAssignSchedule(null)}
-              >
-                <Text style={{ color: THEME.textMuted, fontWeight: '600' }}>Clear Track Mappings</Text>
-              </TouchableOpacity>
-              
+              <TouchableOpacity style={[styles.scheduleRow, { backgroundColor: THEME.surfaceLight }]} onPress={() => handleAssignSchedule(null)}><Text style={{ color: THEME.textMuted, fontWeight: '600' }}>Clear Track Mappings</Text></TouchableOpacity>
               {routines.map(r => (
-                <TouchableOpacity 
-                  key={r.id} 
-                  style={[styles.scheduleRow, { borderLeftWidth: 4, borderLeftColor: r.color }]}
-                  onPress={() => handleAssignSchedule(r.id)}
-                >
-                  <Text style={{ color: THEME.text, fontWeight: '600' }}>{r.name}</Text>
-                  <Ionicons name="checkmark-circle-outline" size={20} color={r.color} />
-                </TouchableOpacity>
+                <TouchableOpacity key={r.id} style={[styles.scheduleRow, { borderLeftWidth: 4, borderLeftColor: r.color }]} onPress={() => handleAssignSchedule(r.id)}><Text style={{ color: THEME.text, fontWeight: '600' }}>{r.name}</Text></TouchableOpacity>
               ))}
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* 3. HISTORICAL METRICS MODAL INSPECTOR */}
+      {/* 3. HISTORY INSPECTOR */}
       <Modal animationType="slide" transparent visible={historyModalVisible} onRequestClose={() => setHistoryModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <View style={{ flex: 1, marginRight: 10 }}>
+              <View>
                 <Text style={styles.modalTitle}>Historical Performance Log</Text>
-                <Text style={{ color: THEME.textMuted, fontSize: 13, marginTop: 2 }}>{selectedHistoryDate}</Text>
+                <Text style={{ color: THEME.textMuted, fontSize: 13 }}>{selectedHistoryDate}</Text>
               </View>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={24} color={THEME.text} />
-              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} style={{ padding: 4 }}><Ionicons name="close" size={24} color={THEME.text} /></TouchableOpacity>
             </View>
-
             <ScrollView>
               {selectedHistoryDate && history[selectedHistoryDate] ? (
                 <View>
-                  <View style={[styles.badge, { backgroundColor: history[selectedHistoryDate].color, alignSelf: 'flex-start', marginBottom: 16 }]}>
-                    <Text style={{ color: '#121212', fontWeight: '800' }}>{history[selectedHistoryDate].routineName}</Text>
-                  </View>
-
-                  {history[selectedHistoryDate].exercises.length === 0 ? (
-                    <Text style={[styles.cardMutedText, { textAlign: 'center', marginVertical: 20 }]}>
-                      Logged as a dedicated structural rest and recovery milestone window! 🌱
-                    </Text>
-                  ) : (
-                    history[selectedHistoryDate].exercises.map((ex, eIdx) => (
-                      <View key={eIdx} style={{ marginBottom: 16, borderBottomWidth: 1, borderColor: THEME.border, paddingBottom: 12 }}>
-                        <Text style={{ color: THEME.text, fontSize: 16, fontWeight: '600', marginBottom: 6 }}>{ex.name}</Text>
-                        {ex.sets.map((set, sIdx) => (
-                          <Text key={sIdx} style={{ color: THEME.textMuted, fontSize: 14, marginVertical: 2 }}>
-                            Set {sIdx + 1}:  <Text style={{ color: THEME.text, fontWeight: '600' }}>{set.weight} kg</Text>  ×  <Text style={{ color: THEME.text, fontWeight: '600' }}>{set.reps} reps</Text> {set.done && ' ✓'}
-                          </Text>
-                        ))}
-                      </View>
-                    ))
-                  )}
+                  <View style={[styles.badge, { backgroundColor: history[selectedHistoryDate].color, alignSelf: 'flex-start', marginBottom: 16 }]}><Text style={{ color: '#121212', fontWeight: '800' }}>{history[selectedHistoryDate].routineName}</Text></View>
+                  {history[selectedHistoryDate].exercises.map((ex, eIdx) => (
+                    <View key={eIdx} style={{ marginBottom: 16, borderBottomWidth: 1, borderColor: THEME.border, paddingBottom: 12 }}>
+                      <Text style={{ color: THEME.text, fontSize: 16, fontWeight: '600', marginBottom: 6 }}>{ex.name}</Text>
+                      {ex.sets.map((set, sIdx) => (
+                        <Text key={sIdx} style={{ color: THEME.textMuted, fontSize: 14 }}>Set {sIdx + 1}: {set.weight} kg × {set.reps} reps</Text>
+                      ))}
+                    </View>
+                  ))}
                 </View>
-              ) : (
-                <View style={{ alignItems: 'center', paddingVertical: 30 }}>
-                  <Ionicons name="ellipse-outline" size={44} color={THEME.textMuted} />
-                  <Text style={{ color: THEME.text, fontSize: 16, fontWeight: '600', marginTop: 12 }}>No Record On This Date</Text>
-                </View>
-              )}
+              ) : <Text style={{ color: THEME.textMuted }}>No record saved.</Text>}
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* 4. NEW ADDICTIONS GENERATOR MODAL */}
+      {/* 4. ADDICTIONS GENERATOR */}
       <Modal animationType="slide" transparent visible={addictionModalVisible} onRequestClose={() => setAddictionModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Launch Sobriety Clean Tracker</Text>
-              </View>
-              <TouchableOpacity onPress={() => setAddictionModalVisible(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={24} color={THEME.text} />
-              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Launch Sobriety Clean Tracker</Text>
+              <TouchableOpacity onPress={() => setAddictionModalVisible(false)} style={{ padding: 4 }}><Ionicons name="close" size={24} color={THEME.text} /></TouchableOpacity>
             </View>
-
             <ScrollView>
               <Text style={styles.inputLabel}>Tracker Focus Goal Name</Text>
-              <TextInput 
-                style={styles.textInput} 
-                placeholder="e.g. Alcohol, Smoking, Fast Food" 
-                placeholderTextColor="#666"
-                value={newAddictionName}
-                onChangeText={setNewAddictionName}
-              />
-
+              <TextInput style={styles.textInput} placeholder="e.g. Alcohol" placeholderTextColor="#666" value={newAddictionName} onChangeText={setNewAddictionName} />
               <Text style={styles.inputLabel}>Grid Matrix Color Tag Identity</Text>
               <View style={[styles.row, { justifyContent: 'space-around', marginVertical: 14 }]}>
                 {Object.keys(ROUTINE_COLORS).map((colorKey) => (
-                  <TouchableOpacity
-                    key={colorKey}
-                    style={[
-                      styles.colorSelectorCircle, 
-                      { backgroundColor: ROUTINE_COLORS[colorKey] },
-                      newAddictionColor === colorKey && styles.colorSelectorCircleSelected
-                    ]}
-                    onPress={() => setNewAddictionColor(colorKey)}
-                  />
+                  <TouchableOpacity key={colorKey} style={[styles.colorSelectorCircle, { backgroundColor: ROUTINE_COLORS[colorKey] }, newAddictionColor === colorKey && styles.colorSelectorCircleSelected]} onPress={() => setNewAddictionColor(colorKey)} />
                 ))}
               </View>
-
-              <TouchableOpacity style={[styles.primaryButton, { marginTop: 16 }]} onPress={handleCreateAddiction}>
-                <Text style={styles.primaryButtonText}>Initialize Clean Track Grid</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={handleCreateAddiction}><Text style={styles.primaryButtonText}>Initialize Clean Track Grid</Text></TouchableOpacity>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* --- BOTTOM NAVIGATION LAYOUT STRIP (Now accommodating 5 links nicely) --- */}
+      {/* BOTTOM NAVIGATION */}
       <View style={styles.tabBar}>
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('today')}>
           <Ionicons name="barbell-outline" size={20} color={currentTab === 'today' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'today' && styles.tabLabelActive]}>Today</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('routines')}>
           <Ionicons name="list-outline" size={20} color={currentTab === 'routines' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'routines' && styles.tabLabelActive]}>Routines</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('schedule')}>
           <Ionicons name="calendar-outline" size={20} color={currentTab === 'schedule' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'schedule' && styles.tabLabelActive]}>Schedule</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('history')}>
           <Ionicons name="analytics-outline" size={20} color={currentTab === 'history' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'history' && styles.tabLabelActive]}>History</Text>
         </TouchableOpacity>
-
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('clean')}>
           <Ionicons name="shield-checkmark-outline" size={20} color={currentTab === 'clean' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'clean' && styles.tabLabelActive]}>Clean</Text>
@@ -1363,6 +1264,38 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.successMuted,
     borderColor: THEME.success,
     color: THEME.success,
+  },
+  timerBanner: {
+    backgroundColor: THEME.surfaceLight,
+    borderColor: THEME.accent,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timerBannerText: {
+    color: THEME.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  timerCancelBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: 6,
+  },
+  inlineTimerBtn: {
+    width: 35,
+    height: 32,
+    borderRadius: 6,
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   addButtonSmall: {
     flexDirection: 'row',
