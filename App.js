@@ -407,7 +407,7 @@ export default function App() {
   };
 
   const handleTriggerTimer = () => {
-    setTimerSeconds(180); // 3 Minuten Countdown
+    setTimerSeconds(180); 
     setTimerActive(true);
   };
 
@@ -425,7 +425,7 @@ export default function App() {
       return {
         name: ex.name,
         sets: setsFilled.map(s => ({
-          weight: parseFloat(s.weight) || 0,
+          weight: parseFloat(s.weight) || 0, // Properly parses decimals
           reps: parseInt(s.reps) || 0,
           done: s.done
         }))
@@ -618,7 +618,7 @@ export default function App() {
                     {isGymDayChecked && (
                       <View style={{ marginTop: 20 }}>
                         
-                        {/* DEZENTER SARTZ-PAUSEN-TIMER DISPLAY */}
+                        {/* DEZENTER SATZ-PAUSEN-TIMER DISPLAY */}
                         {timerSeconds > 0 && (
                           <View style={styles.timerBanner}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -664,12 +664,13 @@ export default function App() {
                                       )}
                                     </TouchableOpacity>
 
+                                    {/* COMPACT WEIGHT INPUT (DECIMAL SUPPORTED) */}
                                     <View style={{ flex: 1, marginRight: 8 }}>
                                       <TextInput
                                         style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
-                                        placeholder="0"
+                                        placeholder="0.0"
                                         placeholderTextColor="#555"
-                                        keyboardType="numeric"
+                                        keyboardType="decimal-pad" 
                                         editable={!isSetDone}
                                         value={activeWorkoutLogs[ex.id]?.[setIndex]?.weight || ''}
                                         onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
