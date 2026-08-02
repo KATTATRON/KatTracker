@@ -122,7 +122,8 @@ const STORAGE_KEYS = {
   SCHEDULE: '@kat_tracker_schedule_v3',
   HISTORY: '@kat_tracker_history_v3',
   CUSTOM_EX_POOL: '@kat_tracker_custom_pool_v3',
-  ADDICTIONS: '@kat_tracker_addictions_v3'
+  ADDICTIONS: '@kat_tracker_addictions_v3',
+  PRS: '@kat_tracker_prs_v3'
 };
 
 // --- UTILITY FUNCTIONS ---
@@ -171,6 +172,7 @@ export default function App() {
   const [history, setHistory] = useState({});
   const [customExercisePool, setCustomExercisePool] = useState([]);
   const [addictions, setAddictions] = useState([]); 
+  const [prs, setPrs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // --- REST TIMER STATE ENGINE ---
@@ -181,6 +183,20 @@ export default function App() {
   const [isGymDayChecked, setIsGymDayChecked] = useState(false);
   const [activeWorkoutLogs, setActiveWorkoutLogs] = useState({}); 
   const [impromptuRoutine, setImpromptuRoutine] = useState(null); 
+
+  // --- SPONTANEOUS WORKOUT STATE ---
+  const [isSpontaneousMode, setIsSpontaneousMode] = useState(false);
+  const [spontaneousExercises, setSpontaneousExercises] = useState([]);
+  const [spontaneousModalVisible, setSpontaneousModalVisible] = useState(false);
+  const [spontaneousExInput, setSpontaneousExInput] = useState('');
+  const [spontaneousSetsInput, setSpontaneousSetsInput] = useState('3');
+  const [showSpontaneousSuggestions, setShowSpontaneousSuggestions] = useState(false);
+
+  // --- PR MODAL STATES ---
+  const [prModalVisible, setPrModalVisible] = useState(false);
+  const [newPrExName, setNewPrExName] = useState('');
+  const [newPrWeight, setNewPrWeight] = useState('');
+  const [showPrSuggestions, setShowPrSuggestions] = useState(false);
 
   // Creator / Editor state
   const [routineModalVisible, setRoutineModalVisible] = useState(false);
@@ -234,12 +250,14 @@ export default function App() {
       const storedHistory = await AsyncStorage.getItem(STORAGE_KEYS.HISTORY);
       const storedCustomEx = await AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_EX_POOL);
       const storedAddictions = await AsyncStorage.getItem(STORAGE_KEYS.ADDICTIONS);
+      const storedPrs = await AsyncStorage.getItem(STORAGE_KEYS.PRS);
 
       if (storedRoutines) setRoutines(JSON.parse(storedRoutines));
       if (storedSchedule) setSchedule(JSON.parse(storedSchedule));
       if (storedHistory) setHistory(JSON.parse(storedHistory));
       if (storedCustomEx) setCustomExercisePool(JSON.parse(storedCustomEx));
       if (storedAddictions) setAddictions(JSON.parse(storedAddictions));
+      if (storedPrs) setPrs(JSON.parse(storedPrs));
     } catch (e) {
       Alert.alert('Error', 'Failed to load local tracking data.');
     } finally {
@@ -264,7 +282,23 @@ export default function App() {
     return !!history[todayStr];
   }, [history]);
 
-  // --- WORKOUT BUSINESS ENGINE HANDLERS ---
+  // --- ROUTINE & EXERCISE ORDERING / EDITING ---
+  const handleMoveExerciseInCreator = (index, direction) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= newRoutineExercises.length) return;
+    const updated = [...newRoutineExercises];
+    const [movedItem] = updated.splice(index, 1);
+    updated.splice(targetIndex, 0, movedItem);
+    setNewRoutineExercises(updated);
+  };
+
+  const handleUpdateExerciseSetsInCreator = (index, newSets) => {
+    const setsVal = parseInt(newSets) || 1;
+    const updated = [...newRoutineExercises];
+    updated[index].defaultSets = setsVal;
+    setNewRoutineExercises(updated);
+  };
+
   const handleCreateOrUpdateRoutine = () => {
     if (!newRoutineName.trim()) return Alert.alert('Invalid Input', 'Provide a name for your routine.');
 
@@ -327,8 +361,7 @@ export default function App() {
     };
 
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm('Are you sure you want to delete this blueprint?');
-      if (confirmed) performDelete();
+      if (window.confirm('Are you sure you want to delete this blueprint?')) performDelete();
     } else {
       Alert.alert('Delete Routine', 'Are you sure? This unlinks the routine from your schedule metrics.', [
         { text: 'Cancel', style: 'cancel' },
@@ -361,6 +394,103 @@ export default function App() {
     setShowSuggestions(false);
   };
 
+  // --- SPONTANEOUS SESSION HANDLERS ---
+  const handleAddSpontaneousExercise = () => {
+    const exName = spontaneousExInput.trim();
+    if (!exName) return;
+
+    const setsCount = parseInt(spontaneousSetsInput) || 3;
+    const newExId = Date.now().toString() + Math.random().toString();
+    const newEx = {
+      id: newExId,
+      name: exName,
+      defaultSets: setsCount
+    };
+
+    const itemExists = combinedExercisePool.some(item => item.toLowerCase() === exName.toLowerCase());
+    if (!itemExists) {
+      const updatedCustomPool = [...customExercisePool, exName];
+      setCustomExercisePool(updatedCustomPool);
+      saveData(STORAGE_KEYS.CUSTOM_EX_POOL, updatedCustomPool);
+    }
+
+    setSpontaneousExercises([...spontaneousExercises, newEx]);
+    setActiveWorkoutLogs(prev => ({
+      ...prev,
+      [newExId]: Array.from({ length: setsCount }, () => ({ weight: '', reps: '', done: false }))
+    }));
+
+    setSpontaneousExInput('');
+    setSpontaneousSetsInput('3');
+    setShowSpontaneousSuggestions(false);
+    setSpontaneousModalVisible(false);
+  };
+
+  const handleSaveSpontaneousSession = () => {
+    if (spontaneousExercises.length === 0) {
+      return Alert.alert('Empty Session', 'Add at least one exercise before saving.');
+    }
+
+    const structuredExercises = spontaneousExercises.map(ex => {
+      const setsFilled = activeWorkoutLogs[ex.id] || [];
+      return {
+        name: ex.name,
+        sets: setsFilled.map(s => ({
+          weight: parseFloat(s.weight) || 0,
+          reps: parseInt(s.reps) || 0,
+          done: s.done
+        }))
+      };
+    });
+
+    const dateStr = getLocalDateString();
+    const updatedHistory = {
+      ...history,
+      [dateStr]: {
+        routineName: 'Spontaneous Session',
+        color: '#FFFFFF', // WHITE TILE FOR SPONTANEOUS SESSION
+        exercises: structuredExercises,
+        timestamp: Date.now()
+      }
+    };
+
+    setHistory(updatedHistory);
+    saveData(STORAGE_KEYS.HISTORY, updatedHistory);
+    Alert.alert('Success!', 'Spontaneous workout saved to history!');
+    setIsSpontaneousMode(false);
+    setSpontaneousExercises([]);
+    setActiveWorkoutLogs({});
+    setCurrentTab('history');
+  };
+
+  // --- PR (PERSONAL RECORD) HANDLERS ---
+  const handleSavePR = () => {
+    if (!newPrExName.trim() || !newPrWeight.trim()) {
+      return Alert.alert('Invalid Input', 'Please provide an exercise name and weight.');
+    }
+
+    const newPr = {
+      id: Date.now().toString(),
+      exercise: newPrExName.trim(),
+      weight: parseFloat(newPrWeight) || 0,
+      date: getLocalDateString()
+    };
+
+    const updated = [newPr, ...prs];
+    setPrs(updated);
+    saveData(STORAGE_KEYS.PRS, updated);
+
+    setNewPrExName('');
+    setNewPrWeight('');
+    Alert.alert('PR Saved!', 'Personal record recorded successfully.');
+  };
+
+  const handleDeletePR = (id) => {
+    const updated = prs.filter(p => p.id !== id);
+    setPrs(updated);
+    saveData(STORAGE_KEYS.PRS, updated);
+  };
+
   const handleAssignSchedule = (routineId) => {
     if (!selectedScheduleDay) return;
     const updated = { ...schedule, [selectedScheduleDay]: routineId };
@@ -378,17 +508,15 @@ export default function App() {
   }, [schedule, routines, impromptuRoutine]);
 
   useEffect(() => {
-    if (currentActiveRoutine) {
+    if (currentActiveRoutine && !isSpontaneousMode) {
       const initialLogs = {};
       currentActiveRoutine.exercises.forEach(ex => {
         initialLogs[ex.id] = Array.from({ length: ex.defaultSets }, () => ({ weight: '', reps: '', done: false }));
       });
       setActiveWorkoutLogs(initialLogs);
-    } else {
-      setActiveWorkoutLogs({});
     }
     setIsGymDayChecked(false);
-  }, [currentActiveRoutine]);
+  }, [currentActiveRoutine, isSpontaneousMode]);
 
   const handleUpdateLogCell = (exId, setIndex, field, value) => {
     const updated = { ...activeWorkoutLogs };
@@ -425,7 +553,7 @@ export default function App() {
       return {
         name: ex.name,
         sets: setsFilled.map(s => ({
-          weight: parseFloat(s.weight) || 0, // Properly parses decimals
+          weight: parseFloat(s.weight) || 0,
           reps: parseInt(s.reps) || 0,
           done: s.done
         }))
@@ -518,6 +646,20 @@ export default function App() {
     );
   }, [exInput, newRoutineExercises, combinedExercisePool]);
 
+  const filteredSpontaneousSuggestions = useMemo(() => {
+    if (!spontaneousExInput.trim()) return [];
+    return combinedExercisePool.filter(item => 
+      item.toLowerCase().includes(spontaneousExInput.toLowerCase())
+    );
+  }, [spontaneousExInput, combinedExercisePool]);
+
+  const filteredPrSuggestions = useMemo(() => {
+    if (!newPrExName.trim()) return [];
+    return combinedExercisePool.filter(item => 
+      item.toLowerCase().includes(newPrExName.toLowerCase())
+    );
+  }, [newPrExName, combinedExercisePool]);
+
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -558,155 +700,266 @@ export default function App() {
               </View>
             ) : (
               <>
-                {currentActiveRoutine ? (
-                  <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: currentActiveRoutine.color }]}>
-                    <View style={styles.rowBetween}>
-                      <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
-                        <Text style={styles.cardMutedText}>
-                          {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for execution this ${getTodayDayName()}`}
-                        </Text>
+                {!isSpontaneousMode ? (
+                  <>
+                    {/* STANDARD / SCHEDULED WORKOUT CARD */}
+                    {currentActiveRoutine ? (
+                      <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: currentActiveRoutine.color }]}>
+                        <View style={styles.rowBetween}>
+                          <View style={{ flex: 1, marginRight: 8 }}>
+                            <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
+                            <Text style={styles.cardMutedText}>
+                              {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for execution this ${getTodayDayName()}`}
+                            </Text>
+                          </View>
+                          <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
+                            <Text style={{ color: currentActiveRoutine.color, fontWeight: '700', fontSize: 12 }}>
+                              {currentActiveRoutine.exercises.length} Exercises
+                            </Text>
+                          </View>
+                        </View>
+                        {impromptuRoutine && (
+                          <TouchableOpacity style={styles.clearImpromptuBtn} onPress={() => setImpromptuRoutine(null)}>
+                            <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600' }}>Cancel Custom Choice</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
-                      <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
-                        <Text style={{ color: currentActiveRoutine.color, fontWeight: '700', fontSize: 12 }}>
-                          {currentActiveRoutine.exercises.length} Exercises
-                        </Text>
-                      </View>
-                    </View>
-                    {impromptuRoutine && (
-                      <TouchableOpacity style={styles.clearImpromptuBtn} onPress={() => setImpromptuRoutine(null)}>
-                        <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600' }}>Cancel Custom Choice</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                ) : (
-                  <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Unscheduled / Flexible Day 🔓</Text>
-                    <Text style={styles.cardMutedText}>No routine is locked into today's matrix. Select a blueprint configuration on-the-fly below:</Text>
-                    
-                    <View style={{ marginTop: 12 }}>
-                      {routines.map(r => (
-                        <TouchableOpacity 
-                          key={r.id} 
-                          style={[styles.flexibleRoutineItem, { borderLeftColor: r.color }]}
-                          onPress={() => setImpromptuRoutine(r)}
-                        >
-                          <Text style={{ color: THEME.text, fontWeight: '600' }}>Launch {r.name}</Text>
-                          <Ionicons name="play-circle" size={20} color={r.color} />
-                        </TouchableOpacity>
-                      ))}
-                      <TouchableOpacity style={[styles.primaryButton, { marginTop: 10, backgroundColor: THEME.surfaceLight }]} onPress={() => setCurrentTab('routines')}>
-                        <Text style={[styles.primaryButtonText, { color: THEME.text }]}>+ Manage Blueprint Blueprints</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-
-                {/* TOGGLE WORKOUT LOGGING BLOCKS */}
-                {currentActiveRoutine && (
-                  <View style={styles.toggleCard}>
-                    <View style={styles.rowBetween}>
-                      <Text style={styles.toggleText}>Ready to log today's session?</Text>
-                      <TouchableOpacity 
-                        style={[styles.checkbox, isGymDayChecked && styles.checkboxChecked]}
-                        onPress={() => setIsGymDayChecked(!isGymDayChecked)}
-                      >
-                        {isGymDayChecked && <Ionicons name="checkmark" size={16} color={THEME.text} />}
-                      </TouchableOpacity>
-                    </View>
-
-                    {isGymDayChecked && (
-                      <View style={{ marginTop: 20 }}>
+                    ) : (
+                      <View style={styles.card}>
+                        <Text style={styles.cardTitle}>Unscheduled / Flexible Day 🔓</Text>
+                        <Text style={styles.cardMutedText}>No routine is locked into today's matrix. Select a blueprint configuration on-the-fly below:</Text>
                         
-                        {/* DEZENTER SATZ-PAUSEN-TIMER DISPLAY */}
-                        {timerSeconds > 0 && (
-                          <View style={styles.timerBanner}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Ionicons name="stopwatch" size={18} color={THEME.accent} style={{ marginRight: 6 }} />
-                              <Text style={styles.timerBannerText}>
-                                Satzpause läuft: <Text style={{ color: THEME.accent }}>{formatTimerString(timerSeconds)}</Text>
-                              </Text>
-                            </View>
-                            <TouchableOpacity style={styles.timerCancelBtn} onPress={() => { setTimerSeconds(0); setTimerActive(false); }}>
-                              <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 12 }}>Skip</Text>
+                        <View style={{ marginTop: 12 }}>
+                          {routines.map(r => (
+                            <TouchableOpacity 
+                              key={r.id} 
+                              style={[styles.flexibleRoutineItem, { borderLeftColor: r.color }]}
+                              onPress={() => setImpromptuRoutine(r)}
+                            >
+                              <Text style={{ color: THEME.text, fontWeight: '600' }}>Launch {r.name}</Text>
+                              <Ionicons name="play-circle" size={20} color={r.color} />
+                            </TouchableOpacity>
+                          ))}
+                          <TouchableOpacity style={[styles.primaryButton, { marginTop: 10, backgroundColor: THEME.surfaceLight }]} onPress={() => setCurrentTab('routines')}>
+                            <Text style={[styles.primaryButtonText, { color: THEME.text }]}>+ Manage Blueprint Blueprints</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+
+                    {/* TOGGLE WORKOUT LOGGING BLOCKS */}
+                    {currentActiveRoutine && (
+                      <View style={styles.toggleCard}>
+                        <View style={styles.rowBetween}>
+                          <Text style={styles.toggleText}>Ready to log today's session?</Text>
+                          <TouchableOpacity 
+                            style={[styles.checkbox, isGymDayChecked && styles.checkboxChecked]}
+                            onPress={() => setIsGymDayChecked(!isGymDayChecked)}
+                          >
+                            {isGymDayChecked && <Ionicons name="checkmark" size={16} color={THEME.text} />}
+                          </TouchableOpacity>
+                        </View>
+
+                        {isGymDayChecked && (
+                          <View style={{ marginTop: 20 }}>
+                            {timerSeconds > 0 && (
+                              <View style={styles.timerBanner}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                  <Ionicons name="stopwatch" size={18} color={THEME.accent} style={{ marginRight: 6 }} />
+                                  <Text style={styles.timerBannerText}>
+                                    Satzpause läuft: <Text style={{ color: THEME.accent }}>{formatTimerString(timerSeconds)}</Text>
+                                  </Text>
+                                </View>
+                                <TouchableOpacity style={styles.timerCancelBtn} onPress={() => { setTimerSeconds(0); setTimerActive(false); }}>
+                                  <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 12 }}>Skip</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+
+                            {currentActiveRoutine.exercises.map((ex) => (
+                              <View key={ex.id} style={styles.exerciseLogBlock}>
+                                <Text style={styles.exerciseLogName}>{ex.name}</Text>
+                                
+                                <View style={[styles.logMetricsRowHeader, { marginBottom: 4 }]}>
+                                  <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
+                                  <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
+                                  <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>Reps Done</Text>
+                                  <Text style={[styles.columnLabel, { width: 35 }]}>Timer</Text>
+                                </View>
+
+                                {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
+                                  const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
+                                  return (
+                                    <View key={setIndex} style={[styles.logMetricsRowHeader, { marginBottom: 8 }, isSetDone && styles.rowCompletedHighlight]}>
+                                      <TouchableOpacity 
+                                        style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
+                                        onPress={() => handleToggleSetComplete(ex.id, setIndex)}
+                                      >
+                                        {isSetDone ? (
+                                          <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
+                                        ) : (
+                                          <Text style={styles.setCheckText}>{setIndex + 1}</Text>
+                                        )}
+                                      </TouchableOpacity>
+
+                                      <View style={{ flex: 1, marginRight: 8 }}>
+                                        <TextInput
+                                          style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
+                                          placeholder="0.0"
+                                          placeholderTextColor="#555"
+                                          keyboardType="decimal-pad" 
+                                          editable={!isSetDone}
+                                          value={activeWorkoutLogs[ex.id]?.[setIndex]?.weight || ''}
+                                          onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
+                                        />
+                                      </View>
+                                      
+                                      <View style={{ flex: 1, marginRight: 8 }}>
+                                        <TextInput
+                                          style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
+                                          placeholder="0"
+                                          placeholderTextColor="#555"
+                                          keyboardType="numeric"
+                                          editable={!isSetDone}
+                                          value={activeWorkoutLogs[ex.id]?.[setIndex]?.reps || ''}
+                                          onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
+                                        />
+                                      </View>
+
+                                      <TouchableOpacity 
+                                        style={[styles.inlineTimerBtn, timerActive && { borderColor: THEME.accentMuted }]} 
+                                        onPress={handleTriggerTimer}
+                                      >
+                                        <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
+                                      </TouchableOpacity>
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            ))}
+
+                            <TouchableOpacity style={styles.primaryButton} onPress={handleSaveWorkoutSession}>
+                              <Text style={styles.primaryButtonText}>Commit & Save Workout Metrics</Text>
                             </TouchableOpacity>
                           </View>
                         )}
+                      </View>
+                    )}
 
-                        {currentActiveRoutine.exercises.length === 0 ? (
-                          <Text style={[styles.cardMutedText, { textAlign: 'center', marginVertical: 20 }]}>
-                            This is an empty rest/recovery block routine blueprint.
-                          </Text>
-                        ) : (
-                          currentActiveRoutine.exercises.map((ex) => (
-                            <View key={ex.id} style={styles.exerciseLogBlock}>
-                              <Text style={styles.exerciseLogName}>{ex.name}</Text>
+                    {/* FEATURE 3: SPONTANEOUS / UNPLANNED SESSION BUTTON */}
+                    <TouchableOpacity 
+                      style={styles.spontaneousLaunchBtn} 
+                      onPress={() => {
+                        setIsSpontaneousMode(true);
+                        setSpontaneousExercises([]);
+                        setActiveWorkoutLogs({});
+                      }}
+                    >
+                      <Ionicons name="flash-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                      <Text style={styles.spontaneousLaunchBtnText}>⚡ Start Spontaneous Session</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  /* SPONTANEOUS SESSION LIVE LOGGING INTERFACE */
+                  <View style={[styles.card, { borderColor: '#FFFFFF', borderWidth: 1.5 }]}>
+                    <View style={styles.rowBetween}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons name="flame" size={24} color="#FFFFFF" style={{ marginRight: 8 }} />
+                        <Text style={[styles.cardTitle, { color: '#FFFFFF' }]}>Spontaneous Session</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setIsSpontaneousMode(false)}>
+                        <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 13 }}>Exit</Text>
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <Text style={[styles.cardMutedText, { marginBottom: 16 }]}>
+                      Unplanned session active. Add exercises freely below and log your reps/weights!
+                    </Text>
+
+                    {/* ADD EXERCISE BUTTON */}
+                    <TouchableOpacity 
+                      style={styles.addExSpontaneousBtn} 
+                      onPress={() => setSpontaneousModalVisible(true)}
+                    >
+                      <Ionicons name="add-circle-outline" size={20} color={THEME.text} style={{ marginRight: 6 }} />
+                      <Text style={{ color: THEME.text, fontWeight: '700', fontSize: 14 }}>+ Add Exercise</Text>
+                    </TouchableOpacity>
+
+                    {/* DYNAMIC SPONTANEOUS EXERCISE LIST */}
+                    {spontaneousExercises.map((ex) => (
+                      <View key={ex.id} style={[styles.exerciseLogBlock, { marginTop: 14 }]}>
+                        <View style={styles.rowBetween}>
+                          <Text style={styles.exerciseLogName}>{ex.name}</Text>
+                          <TouchableOpacity onPress={() => setSpontaneousExercises(spontaneousExercises.filter(e => e.id !== ex.id))}>
+                            <Ionicons name="close-circle-sharp" size={18} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                        
+                        <View style={[styles.logMetricsRowHeader, { marginBottom: 4, marginTop: 6 }]}>
+                          <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
+                          <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
+                          <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>Reps Done</Text>
+                          <Text style={[styles.columnLabel, { width: 35 }]}>Timer</Text>
+                        </View>
+
+                        {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
+                          const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
+                          return (
+                            <View key={setIndex} style={[styles.logMetricsRowHeader, { marginBottom: 8 }, isSetDone && styles.rowCompletedHighlight]}>
+                              <TouchableOpacity 
+                                style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
+                                onPress={() => handleToggleSetComplete(ex.id, setIndex)}
+                              >
+                                {isSetDone ? (
+                                  <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
+                                ) : (
+                                  <Text style={styles.setCheckText}>{setIndex + 1}</Text>
+                                )}
+                              </TouchableOpacity>
+
+                              <View style={{ flex: 1, marginRight: 8 }}>
+                                <TextInput
+                                  style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
+                                  placeholder="0.0"
+                                  placeholderTextColor="#555"
+                                  keyboardType="decimal-pad" 
+                                  editable={!isSetDone}
+                                  value={activeWorkoutLogs[ex.id]?.[setIndex]?.weight || ''}
+                                  onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
+                                />
+                              </View>
                               
-                              <View style={[styles.logMetricsRowHeader, { marginBottom: 4 }]}>
-                                <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
-                                <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
-                                <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>Reps Done</Text>
-                                <Text style={[styles.columnLabel, { width: 35 }]}>Timer</Text>
+                              <View style={{ flex: 1, marginRight: 8 }}>
+                                <TextInput
+                                  style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
+                                  placeholder="0"
+                                  placeholderTextColor="#555"
+                                  keyboardType="numeric"
+                                  editable={!isSetDone}
+                                  value={activeWorkoutLogs[ex.id]?.[setIndex]?.reps || ''}
+                                  onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
+                                />
                               </View>
 
-                              {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
-                                const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
-                                return (
-                                  <View key={setIndex} style={[styles.logMetricsRowHeader, { marginBottom: 8 }, isSetDone && styles.rowCompletedHighlight]}>
-                                    <TouchableOpacity 
-                                      style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
-                                      onPress={() => handleToggleSetComplete(ex.id, setIndex)}
-                                    >
-                                      {isSetDone ? (
-                                        <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
-                                      ) : (
-                                        <Text style={styles.setCheckText}>{setIndex + 1}</Text>
-                                      )}
-                                    </TouchableOpacity>
-
-                                    {/* COMPACT WEIGHT INPUT (DECIMAL SUPPORTED) */}
-                                    <View style={{ flex: 1, marginRight: 8 }}>
-                                      <TextInput
-                                        style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
-                                        placeholder="0.0"
-                                        placeholderTextColor="#555"
-                                        keyboardType="decimal-pad" 
-                                        editable={!isSetDone}
-                                        value={activeWorkoutLogs[ex.id]?.[setIndex]?.weight || ''}
-                                        onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
-                                      />
-                                    </View>
-                                    
-                                    <View style={{ flex: 1, marginRight: 8 }}>
-                                      <TextInput
-                                        style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
-                                        placeholder="0"
-                                        placeholderTextColor="#555"
-                                        keyboardType="numeric"
-                                        editable={!isSetDone}
-                                        value={activeWorkoutLogs[ex.id]?.[setIndex]?.reps || ''}
-                                        onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
-                                      />
-                                    </View>
-
-                                    {/* TIMER START BUTTON FOR INDIVIDUAL SET ROW */}
-                                    <TouchableOpacity 
-                                      style={[styles.inlineTimerBtn, timerActive && { borderColor: THEME.accentMuted }]} 
-                                      onPress={handleTriggerTimer}
-                                    >
-                                      <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
-                                    </TouchableOpacity>
-                                  </View>
-                                );
-                              })}
+                              <TouchableOpacity 
+                                style={[styles.inlineTimerBtn, timerActive && { borderColor: THEME.accentMuted }]} 
+                                onPress={handleTriggerTimer}
+                              >
+                                <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
+                              </TouchableOpacity>
                             </View>
-                          ))
-                        )}
-
-                        <TouchableOpacity style={styles.primaryButton} onPress={handleSaveWorkoutSession}>
-                          <Text style={styles.primaryButtonText}>Commit & Save Workout Metrics</Text>
-                        </TouchableOpacity>
+                          );
+                        })}
                       </View>
+                    ))}
+
+                    {spontaneousExercises.length > 0 && (
+                      <TouchableOpacity 
+                        style={[styles.primaryButton, { marginTop: 16, backgroundColor: '#FFFFFF' }]} 
+                        onPress={handleSaveSpontaneousSession}
+                      >
+                        <Text style={[styles.primaryButtonText, { color: '#121212' }]}>Save Spontaneous Workout</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 )}
@@ -751,9 +1004,9 @@ export default function App() {
                         <Text style={{ color: THEME.textMuted, fontSize: 12 }}>Pure Rest / Recovery Target Block</Text>
                       </View>
                     ) : (
-                      item.exercises.map(e => (
-                        <View key={e.id} style={styles.tagBlock}>
-                          <Text style={styles.tagBlockText}>{e.name} ({e.defaultSets}S)</Text>
+                      item.exercises.map((e, idx) => (
+                        <View key={e.id || idx} style={styles.tagBlock}>
+                          <Text style={styles.tagBlockText}>{idx + 1}. {e.name} ({e.defaultSets}S)</Text>
                         </View>
                       ))
                     )}
@@ -803,6 +1056,19 @@ export default function App() {
         {currentTab === 'history' && (
           <View>
             <Text style={styles.viewTitle}>Performance Analytics</Text>
+
+            {/* FEATURE 1: PR DASHBOARD BUTTON ABOVE GRID */}
+            <TouchableOpacity 
+              style={styles.prDashboardBtn}
+              onPress={() => setPrModalVisible(true)}
+            >
+              <Ionicons name="trophy" size={22} color="#F59E0B" style={{ marginRight: 8 }} />
+              <Text style={styles.prDashboardBtnText}>PR Dashboard</Text>
+              <View style={styles.prBadgeCount}>
+                <Text style={{ color: '#000', fontWeight: '800', fontSize: 11 }}>{prs.length}</Text>
+              </View>
+            </TouchableOpacity>
+
             <View style={styles.card}>
               <Text style={[styles.cardTitle, { fontSize: 14, marginBottom: 12 }]}>Consistency Heatmap Graph</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
@@ -841,7 +1107,7 @@ export default function App() {
               Object.keys(history).sort((a,b) => b.localeCompare(a)).map(dateStr => (
                 <TouchableOpacity 
                   key={dateStr} 
-                  style={[styles.card, { borderLeftWidth: 4, borderLeftColor: history[dateStr].color }]}
+                  style={[styles.card, { borderLeftWidth: 4, borderLeftColor: history[dateStr].color || THEME.accent }]}
                   onPress={() => {
                     setSelectedHistoryDate(dateStr);
                     setHistoryModalVisible(true);
@@ -929,7 +1195,136 @@ export default function App() {
       </ScrollView>
 
       {/* --- MODALS --- */}
-      {/* 1. BLUEPRINT CREATOR */}
+
+      {/* FEATURE 1: PR DASHBOARD MODAL */}
+      <Modal animationType="slide" transparent visible={prModalVisible} onRequestClose={() => setPrModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="trophy" size={24} color="#F59E0B" style={{ marginRight: 8 }} />
+                <Text style={styles.modalTitle}>Personal Record (PR) Menu</Text>
+              </View>
+              <TouchableOpacity onPress={() => setPrModalVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={24} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {/* ADD NEW PR FORM */}
+              <View style={[styles.card, { backgroundColor: THEME.surfaceLight, marginTop: 4 }]}>
+                <Text style={[styles.cardTitle, { fontSize: 14, marginBottom: 8 }]}>+ Add New Personal Record</Text>
+                
+                <View style={{ zIndex: 9999 }}>
+                  <TextInput 
+                    style={styles.textInput} 
+                    placeholder="Exercise Name..." 
+                    placeholderTextColor="#666" 
+                    value={newPrExName} 
+                    onChangeText={(txt) => { setNewPrExName(txt); setShowPrSuggestions(true); }} 
+                    onFocus={() => setShowPrSuggestions(true)} 
+                  />
+                  {showPrSuggestions && filteredPrSuggestions.length > 0 && (
+                    <View style={styles.suggestionsBox}>
+                      {filteredPrSuggestions.slice(0, 5).map((suggestion) => (
+                        <TouchableOpacity key={suggestion} style={styles.suggestionItem} onPress={() => { setNewPrExName(suggestion); setShowPrSuggestions(false); }}>
+                          <Text style={{ color: THEME.text }}>{suggestion}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                <TextInput 
+                  style={[styles.textInput, { marginTop: 10 }]} 
+                  placeholder="Record Weight (KG, e.g. 100.5)..." 
+                  placeholderTextColor="#666" 
+                  keyboardType="decimal-pad" 
+                  value={newPrWeight} 
+                  onChangeText={setNewPrWeight} 
+                />
+
+                <TouchableOpacity style={[styles.primaryButton, { marginTop: 12, backgroundColor: '#F59E0B' }]} onPress={handleSavePR}>
+                  <Text style={[styles.primaryButtonText, { color: '#000' }]}>Save PR Record</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* LIST OF SAVED PRs */}
+              <Text style={[styles.inputLabel, { fontSize: 14, marginTop: 12 }]}>Saved Personal Records ({prs.length})</Text>
+              {prs.length === 0 ? (
+                <Text style={[styles.cardMutedText, { textAlign: 'center', marginVertical: 14 }]}>No PRs added yet. Log your heavy lifts above!</Text>
+              ) : (
+                prs.map(pr => (
+                  <View key={pr.id} style={styles.prCardRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: THEME.text, fontWeight: '700', fontSize: 15 }}>{pr.exercise}</Text>
+                      <Text style={{ color: THEME.textMuted, fontSize: 12 }}>Achieved: {pr.date}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <View style={styles.prWeightBadge}>
+                        <Text style={{ color: '#F59E0B', fontWeight: '900', fontSize: 15 }}>{pr.weight} KG</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => handleDeletePR(pr.id)} style={{ marginLeft: 10, padding: 4 }}>
+                        <Ionicons name="trash-outline" size={18} color={THEME.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* FEATURE 3: SPONTANEOUS EXERCISE PICKER MODAL */}
+      <Modal animationType="fade" transparent visible={spontaneousModalVisible} onRequestClose={() => setSpontaneousModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add Exercise to Spontaneous Session</Text>
+              <TouchableOpacity onPress={() => setSpontaneousModalVisible(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={24} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ zIndex: 9999 }}>
+              <TextInput 
+                style={styles.textInput} 
+                placeholder="Exercise Name..." 
+                placeholderTextColor="#666" 
+                value={spontaneousExInput} 
+                onChangeText={(txt) => { setSpontaneousExInput(txt); setShowSpontaneousSuggestions(true); }} 
+                onFocus={() => setShowSpontaneousSuggestions(true)} 
+              />
+              {showSpontaneousSuggestions && filteredSpontaneousSuggestions.length > 0 && (
+                <View style={styles.suggestionsBox}>
+                  {filteredSpontaneousSuggestions.slice(0, 5).map((sug) => (
+                    <TouchableOpacity key={sug} style={styles.suggestionItem} onPress={() => { setSpontaneousExInput(sug); setShowSpontaneousSuggestions(false); }}>
+                      <Text style={{ color: THEME.text }}>{sug}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <Text style={styles.inputLabel}>Sets Target</Text>
+            <TextInput 
+              style={styles.textInput} 
+              placeholder="3" 
+              placeholderTextColor="#666" 
+              keyboardType="numeric" 
+              value={spontaneousSetsInput} 
+              onChangeText={setSpontaneousSetsInput} 
+            />
+
+            <TouchableOpacity style={[styles.primaryButton, { marginTop: 16 }]} onPress={handleAddSpontaneousExercise}>
+              <Text style={styles.primaryButtonText}>Add to Spontaneous Session</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* FEATURE 2: ROUTINE BLUEPRINT CREATOR / EDITOR MODAL WITH REORDERING & SET EDITING */}
       <Modal animationType="slide" transparent visible={routineModalVisible} onRequestClose={handleCloseRoutineModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
@@ -948,37 +1343,84 @@ export default function App() {
                   <TouchableOpacity key={colorKey} style={[styles.colorSelectorCircle, { backgroundColor: ROUTINE_COLORS[colorKey] }, newRoutineColor === colorKey && styles.colorSelectorCircleSelected]} onPress={() => setNewRoutineColor(colorKey)} />
                 ))}
               </View>
+
               <Text style={styles.inputLabel}>Append Component Exercises</Text>
               <View style={{ zIndex: 999 }}>
                 <View style={styles.row}>
-                  <View style={{ flex: 2, marginRight: 8 }}><TextInput style={styles.textInput} placeholder="Search exercise..." placeholderTextColor="#666" value={exInput} onChangeText={(txt) => { setExInput(txt); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} /></View>
-                  <View style={{ flex: 1, marginRight: 8 }}><TextInput style={styles.textInput} placeholder="Sets" placeholderTextColor="#666" keyboardType="numeric" value={exSetsInput} onChangeText={setExSetsInput} /></View>
-                  <TouchableOpacity style={styles.inlineAddBtn} onPress={handleAddExerciseToCreator}><Ionicons name="add" size={24} color={THEME.text} /></TouchableOpacity>
+                  <View style={{ flex: 2, marginRight: 8 }}>
+                    <TextInput style={styles.textInput} placeholder="Search exercise..." placeholderTextColor="#666" value={exInput} onChangeText={(txt) => { setExInput(txt); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} />
+                  </View>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <TextInput style={styles.textInput} placeholder="Sets" placeholderTextColor="#666" keyboardType="numeric" value={exSetsInput} onChangeText={setExSetsInput} />
+                  </View>
+                  <TouchableOpacity style={styles.inlineAddBtn} onPress={handleAddExerciseToCreator}>
+                    <Ionicons name="add" size={24} color={THEME.text} />
+                  </TouchableOpacity>
                 </View>
                 {showSuggestions && filteredSuggestions.length > 0 && (
                   <View style={styles.suggestionsBox}>
                     {filteredSuggestions.slice(0, 5).map((suggestion) => (
-                      <TouchableOpacity key={suggestion} style={styles.suggestionItem} onPress={() => { setExInput(suggestion); setShowSuggestions(false); }}><Text style={{ color: THEME.text }}>{suggestion}</Text></TouchableOpacity>
+                      <TouchableOpacity key={suggestion} style={styles.suggestionItem} onPress={() => { setExInput(suggestion); setShowSuggestions(false); }}>
+                        <Text style={{ color: THEME.text }}>{suggestion}</Text>
+                      </TouchableOpacity>
                     ))}
                   </View>
                 )}
               </View>
-              <View style={{ marginTop: 12 }}>
+
+              {/* EDITABLE & REORDERABLE EXERCISE LIST */}
+              <View style={{ marginTop: 14 }}>
                 {newRoutineExercises.map((ex, index) => (
-                  <TouchableOpacity key={ex.id} style={styles.stagingExRowInteractive} onPress={() => setNewRoutineExercises(newRoutineExercises.filter(e => e.id !== ex.id))}>
-                    <Text style={{ color: THEME.text, fontWeight: '500', flex: 1 }}>{index + 1}. {ex.name}</Text>
-                    <Text style={{ color: THEME.accent, fontWeight: '700', marginRight: 6 }}>{ex.defaultSets}S</Text>
-                    <Ionicons name="close-circle-sharp" size={16} color="#EF4444" />
-                  </TouchableOpacity>
+                  <View key={ex.id || index} style={styles.reorderableExRow}>
+                    {/* ORDER CONTROLS */}
+                    <View style={{ flexDirection: 'column', marginRight: 8 }}>
+                      <TouchableOpacity 
+                        onPress={() => handleMoveExerciseInCreator(index, -1)} 
+                        disabled={index === 0}
+                        style={{ opacity: index === 0 ? 0.3 : 1, padding: 2 }}
+                      >
+                        <Ionicons name="chevron-up" size={18} color={THEME.text} />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => handleMoveExerciseInCreator(index, 1)} 
+                        disabled={index === newRoutineExercises.length - 1}
+                        style={{ opacity: index === newRoutineExercises.length - 1 ? 0.3 : 1, padding: 2 }}
+                      >
+                        <Ionicons name="chevron-down" size={18} color={THEME.text} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* EXERCISE NAME */}
+                    <Text style={{ color: THEME.text, fontWeight: '600', flex: 1, fontSize: 13 }}>{index + 1}. {ex.name}</Text>
+
+                    {/* INLINE SET COUNT EDIT FIELD */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
+                      <Text style={{ color: THEME.textMuted, fontSize: 12, marginRight: 4 }}>Sets:</Text>
+                      <TextInput 
+                        style={styles.setsInputInline}
+                        keyboardType="numeric"
+                        value={String(ex.defaultSets)}
+                        onChangeText={(txt) => handleUpdateExerciseSetsInCreator(index, txt)}
+                      />
+                    </View>
+
+                    {/* DELETE EXERCISE */}
+                    <TouchableOpacity onPress={() => setNewRoutineExercises(newRoutineExercises.filter((_, i) => i !== index))}>
+                      <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </View>
-              <TouchableOpacity style={[styles.primaryButton, { marginTop: 24 }]} onPress={handleCreateOrUpdateRoutine}><Text style={styles.primaryButtonText}>Compile Blueprint Routine</Text></TouchableOpacity>
+
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 24 }]} onPress={handleCreateOrUpdateRoutine}>
+                <Text style={styles.primaryButtonText}>Compile Blueprint Routine</Text>
+              </TouchableOpacity>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* 2. SCHEDULER */}
+      {/* SCHEDULER MODAL */}
       <Modal animationType="fade" transparent visible={schedulerModalVisible} onRequestClose={() => setSchedulerModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
@@ -987,16 +1429,20 @@ export default function App() {
               <TouchableOpacity onPress={() => setSchedulerModalVisible(false)} style={{ padding: 4 }}><Ionicons name="close" size={24} color={THEME.text} /></TouchableOpacity>
             </View>
             <ScrollView>
-              <TouchableOpacity style={[styles.scheduleRow, { backgroundColor: THEME.surfaceLight }]} onPress={() => handleAssignSchedule(null)}><Text style={{ color: THEME.textMuted, fontWeight: '600' }}>Clear Track Mappings</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.scheduleRow, { backgroundColor: THEME.surfaceLight }]} onPress={() => handleAssignSchedule(null)}>
+                <Text style={{ color: THEME.textMuted, fontWeight: '600' }}>Clear Track Mappings</Text>
+              </TouchableOpacity>
               {routines.map(r => (
-                <TouchableOpacity key={r.id} style={[styles.scheduleRow, { borderLeftWidth: 4, borderLeftColor: r.color }]} onPress={() => handleAssignSchedule(r.id)}><Text style={{ color: THEME.text, fontWeight: '600' }}>{r.name}</Text></TouchableOpacity>
+                <TouchableOpacity key={r.id} style={[styles.scheduleRow, { borderLeftWidth: 4, borderLeftColor: r.color }]} onPress={() => handleAssignSchedule(r.id)}>
+                  <Text style={{ color: THEME.text, fontWeight: '600' }}>{r.name}</Text>
+                </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* 3. HISTORY INSPECTOR */}
+      {/* HISTORY INSPECTOR MODAL */}
       <Modal animationType="slide" transparent visible={historyModalVisible} onRequestClose={() => setHistoryModalVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
@@ -1010,7 +1456,9 @@ export default function App() {
             <ScrollView>
               {selectedHistoryDate && history[selectedHistoryDate] ? (
                 <View>
-                  <View style={[styles.badge, { backgroundColor: history[selectedHistoryDate].color, alignSelf: 'flex-start', marginBottom: 16 }]}><Text style={{ color: '#121212', fontWeight: '800' }}>{history[selectedHistoryDate].routineName}</Text></View>
+                  <View style={[styles.badge, { backgroundColor: history[selectedHistoryDate].color || THEME.accent, alignSelf: 'flex-start', marginBottom: 16 }]}>
+                    <Text style={{ color: '#121212', fontWeight: '800' }}>{history[selectedHistoryDate].routineName}</Text>
+                  </View>
                   {history[selectedHistoryDate].exercises.map((ex, eIdx) => (
                     <View key={eIdx} style={{ marginBottom: 16, borderBottomWidth: 1, borderColor: THEME.border, paddingBottom: 12 }}>
                       <Text style={{ color: THEME.text, fontSize: 16, fontWeight: '600', marginBottom: 6 }}>{ex.name}</Text>
@@ -1020,13 +1468,13 @@ export default function App() {
                     </View>
                   ))}
                 </View>
-              ) : <Text style={{ color: THEME.textMuted }}>No record saved.</Text>}
+              ) : <Text style={{ color: THEME.textMuted }}>No record saved for this date.</Text>}
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* 4. ADDICTIONS GENERATOR */}
+      {/* ADDICTIONS GENERATOR MODAL */}
       <Modal animationType="slide" transparent visible={addictionModalVisible} onRequestClose={() => setAddictionModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
@@ -1152,6 +1600,33 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     alignSelf: 'flex-start',
   },
+  spontaneousLaunchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: THEME.surfaceLight,
+    borderWidth: 1.5,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  spontaneousLaunchBtnText: {
+    color: THEME.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  addExSpontaneousBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: THEME.surfaceLight,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 8,
+    paddingVertical: 10,
+  },
   completedBannerCard: {
     backgroundColor: THEME.surface,
     borderRadius: 14,
@@ -1211,7 +1686,7 @@ const styles = StyleSheet.create({
     color: THEME.text,
     fontSize: 15,
     fontWeight: '700',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   logMetricsRowHeader: {
     flexDirection: 'row',
@@ -1364,6 +1839,70 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 14,
   },
+  prDashboardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: THEME.surface,
+    borderColor: '#F59E0B',
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  prDashboardBtnText: {
+    color: THEME.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  prBadgeCount: {
+    backgroundColor: '#F59E0B',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  prCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  prWeightBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  reorderableExRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.surfaceLight,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  setsInputInline: {
+    backgroundColor: THEME.surface,
+    borderColor: THEME.border,
+    borderWidth: 1,
+    borderRadius: 6,
+    color: THEME.text,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    width: 44,
+    textAlign: 'center',
+    fontWeight: '700',
+  },
   tabBar: {
     position: 'absolute',
     bottom: 0,
@@ -1468,17 +2007,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
-  },
-  stagingExRowInteractive: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: THEME.surfaceLight,
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 6,
-    borderWidth: 1,
-    borderColor: THEME.border,
   },
   primaryButton: {
     backgroundColor: THEME.accent,
