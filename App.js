@@ -687,7 +687,7 @@ export default function App() {
         {/* --- VIEW 1: TODAY WORKOUT ENGINE --- */}
         {currentTab === 'today' && (
           <View>
-            <Text style={styles.viewTitle}>Today's Execution</Text>
+            <Text style={styles.viewTitle}>Today's Workout</Text>
             
             {isTodayCompleted ? (
               <View style={styles.completedBannerCard}>
@@ -709,7 +709,7 @@ export default function App() {
                           <View style={{ flex: 1, marginRight: 8 }}>
                             <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
                             <Text style={styles.cardMutedText}>
-                              {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for execution this ${getTodayDayName()}`}
+                              {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for Workout this ${getTodayDayName()}`}
                             </Text>
                           </View>
                           <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
