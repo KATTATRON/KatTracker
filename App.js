@@ -58,6 +58,7 @@ const BASE_EXERCISE_POOL = [
   'Barbell Rows',
   'One-Arm Dumbbell Rows',
   'Seated Cable Rows (Close Grip)',
+  'High-to-Low Cable Row',
   'T-Bar Rows',
   'Conventional Deadlift',
   'Hyperextensions (Back Extensions)',
@@ -67,6 +68,7 @@ const BASE_EXERCISE_POOL = [
   'Overhead Press (Barbell)',
   'Seated Dumbbell Shoulder Press',
   'Lateral Raises (Dumbbell)',
+  'Cable Lateral Raises',
   'Front Raises (Dumbbell / Cable)',
   'Rear Delt Flys (Pec Deck)',
   'Arnold Press',
@@ -448,7 +450,7 @@ export default function App() {
       ...history,
       [dateStr]: {
         routineName: 'Spontaneous Session',
-        color: '#FFFFFF', // WHITE TILE FOR SPONTANEOUS SESSION
+        color: '#FFFFFF',
         exercises: structuredExercises,
         timestamp: Date.now()
       }
@@ -709,7 +711,7 @@ export default function App() {
                           <View style={{ flex: 1, marginRight: 8 }}>
                             <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
                             <Text style={styles.cardMutedText}>
-                              {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for Workout this ${getTodayDayName()}`}
+                              {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for today, ${getTodayDayName()}`}
                             </Text>
                           </View>
                           <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
@@ -846,7 +848,7 @@ export default function App() {
                       </View>
                     )}
 
-                    {/* FEATURE 3: SPONTANEOUS / UNPLANNED SESSION BUTTON */}
+                    {/* SPONTANEOUS SESSION BUTTON */}
                     <TouchableOpacity 
                       style={styles.spontaneousLaunchBtn} 
                       onPress={() => {
@@ -1057,7 +1059,7 @@ export default function App() {
           <View>
             <Text style={styles.viewTitle}>Performance Analytics</Text>
 
-            {/* FEATURE 1: PR DASHBOARD BUTTON ABOVE GRID */}
+            {/* PR DASHBOARD BUTTON ABOVE GRID */}
             <TouchableOpacity 
               style={styles.prDashboardBtn}
               onPress={() => setPrModalVisible(true)}
@@ -1196,7 +1198,7 @@ export default function App() {
 
       {/* --- MODALS --- */}
 
-      {/* FEATURE 1: PR DASHBOARD MODAL */}
+      {/* PR DASHBOARD MODAL */}
       <Modal animationType="slide" transparent visible={prModalVisible} onRequestClose={() => setPrModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
@@ -1276,7 +1278,7 @@ export default function App() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* FEATURE 3: SPONTANEOUS EXERCISE PICKER MODAL */}
+      {/* SPONTANEOUS EXERCISE PICKER MODAL */}
       <Modal animationType="fade" transparent visible={spontaneousModalVisible} onRequestClose={() => setSpontaneousModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
@@ -1324,7 +1326,7 @@ export default function App() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* FEATURE 2: ROUTINE BLUEPRINT CREATOR / EDITOR MODAL WITH REORDERING & SET EDITING */}
+      {/* ROUTINE BLUEPRINT CREATOR / EDITOR MODAL */}
       <Modal animationType="slide" transparent visible={routineModalVisible} onRequestClose={handleCloseRoutineModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
@@ -1372,7 +1374,6 @@ export default function App() {
               <View style={{ marginTop: 14 }}>
                 {newRoutineExercises.map((ex, index) => (
                   <View key={ex.id || index} style={styles.reorderableExRow}>
-                    {/* ORDER CONTROLS */}
                     <View style={{ flexDirection: 'column', marginRight: 8 }}>
                       <TouchableOpacity 
                         onPress={() => handleMoveExerciseInCreator(index, -1)} 
@@ -1390,10 +1391,8 @@ export default function App() {
                       </TouchableOpacity>
                     </View>
 
-                    {/* EXERCISE NAME */}
                     <Text style={{ color: THEME.text, fontWeight: '600', flex: 1, fontSize: 13 }}>{index + 1}. {ex.name}</Text>
 
-                    {/* INLINE SET COUNT EDIT FIELD */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
                       <Text style={{ color: THEME.textMuted, fontSize: 12, marginRight: 4 }}>Sets:</Text>
                       <TextInput 
@@ -1404,7 +1403,6 @@ export default function App() {
                       />
                     </View>
 
-                    {/* DELETE EXERCISE */}
                     <TouchableOpacity onPress={() => setNewRoutineExercises(newRoutineExercises.filter((_, i) => i !== index))}>
                       <Ionicons name="trash-outline" size={18} color="#EF4444" />
                     </TouchableOpacity>
