@@ -38,7 +38,7 @@ const ROUTINE_COLORS = {
   Gray: '#6B7280',   
 };
 
-// FULL 75-EXERCISE DICTIONARY WITH CATEGory TAGS
+// FULL 75-EXERCISE DICTIONARY WITH CATEGORY TAGS
 const EXERCISE_DICTIONARY = [
   // CHEST
   { name: 'Pull-ups (Bodyweight / Weighted)', category: 'Pull' },
@@ -292,12 +292,11 @@ export default function App() {
     return !!history[todayStr];
   }, [history]);
 
-  // --- RECOVERY MATRIX COMPUTATION (SPLIT BICEPS & TRICEPS) ---
+  // --- RECOVERY MATRIX COMPUTATION ---
   const recoveryMatrix = useMemo(() => {
     const now = Date.now();
     const categories = { Chest: 0, Back: 0, Shoulders: 0, Biceps: 0, Triceps: 0, Legs: 0, Core: 0 };
     
-    // Scan all history entries for workouts in the last 48 hours
     Object.values(history).forEach((entry) => {
       const timestamp = entry.timestamp || 0;
       const hoursAgo = (now - timestamp) / (1000 * 60 * 60);
@@ -537,7 +536,7 @@ export default function App() {
     setCurrentTab('history');
   };
 
-  // --- PR (PERSONAL RECORD) HANDLERS ---
+  // --- PR HANDLERS ---
   const handleSavePR = () => {
     if (!newPrExName.trim() || !newPrWeight.trim()) {
       return Alert.alert('Invalid Input', 'Please provide an exercise name and weight.');
@@ -772,7 +771,6 @@ export default function App() {
           <View>
             <Text style={styles.viewTitle}>Today's Workout</Text>
             
-            {/* 48-HOUR RECOVERY MATRIX CARD */}
             <View style={styles.card}>
               <View style={styles.rowBetween}>
                 <Text style={styles.cardTitle}>48-Hour Recovery Matrix 🧬</Text>
@@ -802,7 +800,6 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             ) : isSpontaneousMode ? (
-              /* SPONTANEOUS WORKOUT LIVE ENGINE */
               <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: THEME.accent }]}>
                 <View style={styles.rowBetween}>
                   <View style={{ flex: 1 }}>
@@ -888,7 +885,6 @@ export default function App() {
               </View>
             ) : (
               <>
-                {/* STANDARD / SCHEDULED WORKOUT CARD */}
                 {currentActiveRoutine ? (
                   <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: currentActiveRoutine.color }]}>
                     <View style={styles.rowBetween}>
@@ -933,7 +929,6 @@ export default function App() {
                   </View>
                 )}
 
-                {/* TOGGLE WORKOUT LOGGING BLOCKS */}
                 {currentActiveRoutine && (
                   <View style={styles.toggleCard}>
                     <View style={styles.rowBetween}>
@@ -1114,13 +1109,15 @@ export default function App() {
                   {generateHeatmapDates().map((week, wIdx) => (
                     <View key={wIdx} style={{ marginRight: 4 }}>
                       {week.map((dateStr) => {
-                        const isLogged = !!history[dateStr];
+                        const historyItem = history[dateStr];
+                        const isLogged = !!historyItem;
+                        const cellColor = isLogged ? (historyItem.color || THEME.success) : THEME.surfaceLight;
                         return (
                           <TouchableOpacity 
                             key={dateStr}
                             style={[
                               styles.heatmapCell, 
-                              isLogged && { backgroundColor: THEME.success }
+                              { backgroundColor: cellColor }
                             ]}
                             onPress={() => {
                               setSelectedHistoryDate(dateStr);
@@ -1253,103 +1250,118 @@ export default function App() {
 
       </ScrollView>
 
-      {/* --- MODAL 1: ROUTINE BLUEPRINT CREATOR / EDITOR --- */}
+      {/* --- MODAL 1: ROUTINE BLUEPRINT CREATOR / EDITOR (PIC 1 STYLING) --- */}
       <Modal visible={routineModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>{editingRoutineId ? 'Edit Routine' : 'Create Routine'}</Text>
-            
-            <TextInput
-              style={styles.input}
-              placeholder="Routine Name (e.g., Heavy Push)"
-              placeholderTextColor="#666"
-              value={newRoutineName}
-              onChangeText={setNewRoutineName}
-            />
-
-            <Text style={styles.inputLabel}>Accent Theme Color:</Text>
-            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
-              {Object.keys(ROUTINE_COLORS).map(cName => (
-                <TouchableOpacity 
-                  key={cName} 
-                  style={[
-                    styles.colorDot, 
-                    { backgroundColor: ROUTINE_COLORS[cName] },
-                    newRoutineColor === cName && styles.colorDotSelected
-                  ]}
-                  onPress={() => setNewRoutineColor(cName)}
-                />
-              ))}
-            </View>
-
-            <Text style={styles.inputLabel}>Add Exercise & Sets:</Text>
-            <View style={{ flexDirection: 'row', marginBottom: 8 }}>
-              <TextInput
-                style={[styles.input, { flex: 2, marginRight: 8 }]}
-                placeholder="Exercise Name"
-                placeholderTextColor="#666"
-                value={exInput}
-                onChangeText={(val) => { setExInput(val); setShowSuggestions(true); }}
-              />
-              <TextInput
-                style={[styles.input, { flex: 1, marginRight: 8 }]}
-                placeholder="Sets"
-                placeholderTextColor="#666"
-                keyboardType="numeric"
-                value={exSetsInput}
-                onChangeText={setExSetsInput}
-              />
-              <TouchableOpacity style={styles.addExBtn} onPress={handleAddExerciseToCreator}>
-                <Ionicons name="add" size={24} color="#FFF" />
+          <View style={[styles.modalContainer, { maxHeight: '85%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>{editingRoutineId ? 'Modify Plan Blueprint' : 'Create Plan Blueprint'}</Text>
+              <TouchableOpacity onPress={handleCloseRoutineModal}>
+                <Ionicons name="close" size={22} color={THEME.text} />
               </TouchableOpacity>
             </View>
+            
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <TextInput
+                style={styles.picInput}
+                placeholder="Routine Name (e.g., Chest Day 💪❤️)"
+                placeholderTextColor="#666"
+                value={newRoutineName}
+                onChangeText={setNewRoutineName}
+              />
 
-            {showSuggestions && filteredSuggestions.length > 0 && (
-              <View style={styles.suggestionsContainer}>
-                <ScrollView style={{ maxHeight: 120 }}>
-                  {filteredSuggestions.map((item, idx) => (
-                    <TouchableOpacity 
-                      key={idx} 
-                      style={styles.suggestionItem} 
-                      onPress={() => {
-                        setExInput(item);
-                        setShowSuggestions(false);
-                      }}
-                    >
-                      <Text style={{ color: THEME.text, fontSize: 13 }}>{item}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+              <Text style={styles.picSectionLabel}>Theme Display Color Map Tag</Text>
+              <View style={styles.picColorRow}>
+                {Object.keys(ROUTINE_COLORS).map(cName => (
+                  <TouchableOpacity 
+                    key={cName} 
+                    style={[
+                      styles.picColorDot, 
+                      { backgroundColor: ROUTINE_COLORS[cName] },
+                      newRoutineColor === cName && styles.picColorDotSelected
+                    ]}
+                    onPress={() => setNewRoutineColor(cName)}
+                  />
+                ))}
               </View>
-            )}
 
-            <ScrollView style={{ maxHeight: 180, marginVertical: 10 }}>
-              {newRoutineExercises.map((ex, idx) => (
-                <View key={ex.id || idx} style={styles.exCreatorItem}>
-                  <Text style={{ color: THEME.text, flex: 1 }}>{ex.name} ({ex.defaultSets} sets)</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <TouchableOpacity onPress={() => handleMoveExerciseInCreator(idx, -1)} style={{ padding: 4 }}>
-                      <Ionicons name="chevron-up" size={18} color={THEME.textMuted} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleMoveExerciseInCreator(idx, 1)} style={{ padding: 4, marginRight: 8 }}>
-                      <Ionicons name="chevron-down" size={18} color={THEME.textMuted} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setNewRoutineExercises(newRoutineExercises.filter((_, i) => i !== idx))}>
-                      <Ionicons name="close-circle" size={20} color="#EF4444" />
+              <Text style={styles.picSectionLabel}>Append Component Exercises</Text>
+              <View style={styles.picAppendRow}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <TextInput
+                    style={styles.picSearchInput}
+                    placeholder="Search exercise..."
+                    placeholderTextColor="#666"
+                    value={exInput}
+                    onChangeText={(val) => { setExInput(val); setShowSuggestions(true); }}
+                  />
+                </View>
+                <TextInput
+                  style={styles.picSetsInput}
+                  placeholder="3"
+                  placeholderTextColor="#666"
+                  keyboardType="numeric"
+                  value={exSetsInput}
+                  onChangeText={setExSetsInput}
+                />
+                <TouchableOpacity style={styles.picAddBtn} onPress={handleAddExerciseToCreator}>
+                  <Ionicons name="add" size={20} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+
+              {showSuggestions && filteredSuggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  <ScrollView style={{ maxHeight: 120 }}>
+                    {filteredSuggestions.map((item, idx) => (
+                      <TouchableOpacity 
+                        key={idx} 
+                        style={styles.suggestionItem} 
+                        onPress={() => {
+                          setExInput(item);
+                          setShowSuggestions(false);
+                        }}
+                      >
+                        <Text style={{ color: THEME.text, fontSize: 13 }}>{item}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              <View style={{ marginTop: 6 }}>
+                {newRoutineExercises.map((ex, idx) => (
+                  <View key={ex.id || idx} style={styles.picExerciseCard}>
+                    <View style={styles.picExerciseCardControls}>
+                      <TouchableOpacity onPress={() => handleMoveExerciseInCreator(idx, -1)}>
+                        <Ionicons name="chevron-up" size={14} color={THEME.textMuted} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleMoveExerciseInCreator(idx, 1)} style={{ marginTop: 2 }}>
+                        <Ionicons name="chevron-down" size={14} color={THEME.textMuted} />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.picExerciseTitleText} numberOfLines={1}>
+                      {idx + 1}. {ex.name}
+                    </Text>
+                    <View style={styles.picExerciseSetsWrapper}>
+                      <Text style={styles.picSetsLabelText}>Sets:</Text>
+                      <TextInput
+                        style={styles.picExerciseSetsInput}
+                        keyboardType="numeric"
+                        value={String(ex.defaultSets)}
+                        onChangeText={(val) => handleUpdateExerciseSetsInCreator(idx, val)}
+                      />
+                    </View>
+                    <TouchableOpacity onPress={() => setNewRoutineExercises(newRoutineExercises.filter((_, i) => i !== idx))} style={{ padding: 4 }}>
+                      <Ionicons name="trash-outline" size={16} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
-                </View>
-              ))}
-            </ScrollView>
+                ))}
+              </View>
 
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight }]} onPress={handleCloseRoutineModal}>
-                <Text style={{ color: THEME.text }}>Cancel</Text>
+              <TouchableOpacity style={[styles.primaryButton, { marginTop: 16, marginBottom: 20 }]} onPress={handleCreateOrUpdateRoutine}>
+                <Text style={styles.primaryButtonText}>Save Blueprint Configuration</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.accent, marginLeft: 8 }]} onPress={handleCreateOrUpdateRoutine}>
-                <Text style={{ color: THEME.text, fontWeight: '700' }}>Save</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1827,7 +1839,6 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 3,
-    backgroundColor: THEME.surfaceLight,
     marginBottom: 4,
   },
   modalOverlay: {
@@ -1843,11 +1854,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: THEME.border,
   },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
   modalTitle: {
     color: THEME.text,
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 12,
   },
   inputLabel: {
     color: THEME.textMuted,
@@ -1874,6 +1890,110 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFF',
   },
+  // PIC 1 MATCHING MODAL STYLING
+  picInput: {
+    backgroundColor: THEME.surfaceLight,
+    color: THEME.text,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  picSectionLabel: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  picColorRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  picColorDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  picColorDotSelected: {
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  picAppendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  picSearchInput: {
+    backgroundColor: THEME.surfaceLight,
+    color: THEME.text,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+  },
+  picSetsInput: {
+    backgroundColor: THEME.surfaceLight,
+    color: THEME.text,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    fontSize: 13,
+    width: 45,
+    textAlign: 'center',
+    marginRight: 8,
+  },
+  picAddBtn: {
+    backgroundColor: THEME.accent,
+    width: 42,
+    height: 42,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  picExerciseCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  picExerciseCardControls: {
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  picExerciseTitleText: {
+    color: THEME.text,
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  picExerciseSetsWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.background,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 8,
+  },
+  picSetsLabelText: {
+    color: THEME.textMuted,
+    fontSize: 11,
+    marginRight: 4,
+  },
+  picExerciseSetsInput: {
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '700',
+    width: 20,
+    textAlign: 'center',
+  },
   addExBtn: {
     backgroundColor: THEME.accent,
     width: 42,
@@ -1893,15 +2013,6 @@ const styles = StyleSheet.create({
     padding: 10,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
-  },
-  exCreatorItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: THEME.surfaceLight,
-    padding: 10,
-    borderRadius: 6,
-    marginBottom: 6,
   },
   modalBtn: {
     paddingHorizontal: 14,
