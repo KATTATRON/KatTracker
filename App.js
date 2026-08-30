@@ -1,3 +1,4 @@
+name=App.js
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
@@ -1116,12 +1117,14 @@ export default function App() {
                     <View key={wIdx} style={{ marginRight: 4 }}>
                       {week.map((dateStr) => {
                         const isLogged = !!history[dateStr];
+                        const loggedItem = history[dateStr];
+                        const cellColor = loggedItem?.color || THEME.success;
                         return (
                           <TouchableOpacity 
                             key={dateStr}
                             style={[
                               styles.heatmapCell, 
-                              isLogged && { backgroundColor: THEME.success }
+                              isLogged && { backgroundColor: cellColor }
                             ]}
                             onPress={() => {
                               setSelectedHistoryDate(dateStr);
