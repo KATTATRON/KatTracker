@@ -38,7 +38,7 @@ const ROUTINE_COLORS = {
   Gray: '#6B7280',   
 };
 
-// FULL 75-EXERCISE DICTIONARY WITH CATEGORY TAGS
+// FULL 75-EXERCISE DICTIONARY WITH CATEGory TAGS
 const EXERCISE_DICTIONARY = [
   // CHEST
   { name: 'Pull-ups (Bodyweight / Weighted)', category: 'Pull' },
@@ -754,7 +754,6 @@ export default function App() {
           <Text style={styles.headerTitle}>KatTracker</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {/* FEATURE 1: SINGLE LIGHTNING BOLT BUTTON (⚡ START SPONTANEOUS SESSION) */}
           <TouchableOpacity 
             style={styles.lightningBtn} 
             onPress={handleStartSpontaneousSession}
@@ -773,7 +772,7 @@ export default function App() {
           <View>
             <Text style={styles.viewTitle}>Today's Workout</Text>
             
-            {/* FEATURE 2: 48-HOUR RECOVERY MATRIX CARD */}
+            {/* 48-HOUR RECOVERY MATRIX CARD */}
             <View style={styles.card}>
               <View style={styles.rowBetween}>
                 <Text style={styles.cardTitle}>48-Hour Recovery Matrix 🧬</Text>
@@ -1496,7 +1495,7 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* --- MODAL 5: HISTORY DETAIL MODAL (FEATURE 3: PROGRESSIVE OVERLOAD DIFFERENTIAL TAGS) --- */}
+      {/* --- MODAL 5: HISTORY DETAIL MODAL --- */}
       <Modal visible={historyModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
@@ -1992,7 +1991,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 12,
   },
-  // RECOVERY MATRIX STYLES
   recoveryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2026,7 +2024,6 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  // DIFFERENTIAL TAG STYLES
   diffTag: {
     paddingHorizontal: 6,
     paddingVertical: 2,
