@@ -1,4 +1,4 @@
-name=App.js
+name=App_2.js
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
@@ -45,7 +45,7 @@ const EXERCISE_DICTIONARY = [
   { name: 'Pull-ups (Bodyweight / Weighted)', category: 'Pull' },
   { name: 'Chin-ups (Bodyweight / Weighted)', category: 'Pull' },
   { name: 'Dips (Chest Focus)', category: 'Chest' },
-  { name: 'Dips (Triceps Focus)', category: 'Arms' },
+  { name: 'Dips (Triceps Focus)', category: 'Triceps' },
   { name: 'Flat Bench Press (Barbell)', category: 'Chest' },
   { name: 'Incline Dumbbell Press', category: 'Chest' },
   { name: 'Decline Barbell Press', category: 'Chest' },
@@ -80,27 +80,27 @@ const EXERCISE_DICTIONARY = [
   { name: 'Upright Rows (Barbell / Cable)', category: 'Shoulders' },
   { name: 'Face Pulls (Rope)', category: 'Shoulders' },
   { name: 'Push Press', category: 'Shoulders' },
-  // BICEPS / ARMS
-  { name: 'Barbell Curls', category: 'Arms' },
-  { name: 'Dumbbell Alternating Curls', category: 'Arms' },
-  { name: 'Hammer Curls', category: 'Arms' },
-  { name: 'Preacher Curls (EZ Bar)', category: 'Arms' },
-  { name: 'Concentration Curls', category: 'Arms' },
-  { name: 'Incline Dumbbell Curls', category: 'Arms' },
-  { name: 'Cable Curls (Rope / Straight Bar)', category: 'Arms' },
-  { name: 'Spider Curls', category: 'Arms' },
-  { name: 'Bayesian Curls', category: 'Arms' },
-  { name: 'Zottman Curls', category: 'Arms' },
-  // TRICEPS / ARMS
-  { name: 'Overhead Tricep Extension (Dumbbell)', category: 'Arms' },
-  { name: 'Tricep Rope Pushdowns', category: 'Arms' },
-  { name: 'Skull Crushers (EZ Bar)', category: 'Arms' },
-  { name: 'Close-Grip Bench Press', category: 'Arms' },
-  { name: 'Diamond Push-ups', category: 'Arms' },
-  { name: 'Cable V-Bar Pushdowns', category: 'Arms' },
-  { name: 'Tricep Dumbbell Kickbacks', category: 'Arms' },
-  { name: 'Bench Dips', category: 'Arms' },
-  { name: 'Machine Tricep Pressdown', category: 'Arms' },
+  // BICEPS
+  { name: 'Barbell Curls', category: 'Biceps' },
+  { name: 'Dumbbell Alternating Curls', category: 'Biceps' },
+  { name: 'Hammer Curls', category: 'Biceps' },
+  { name: 'Preacher Curls (EZ Bar)', category: 'Biceps' },
+  { name: 'Concentration Curls', category: 'Biceps' },
+  { name: 'Incline Dumbbell Curls', category: 'Biceps' },
+  { name: 'Cable Curls (Rope / Straight Bar)', category: 'Biceps' },
+  { name: 'Spider Curls', category: 'Biceps' },
+  { name: 'Bayesian Curls', category: 'Biceps' },
+  { name: 'Zottman Curls', category: 'Biceps' },
+  // TRICEPS
+  { name: 'Overhead Tricep Extension (Dumbbell)', category: 'Triceps' },
+  { name: 'Tricep Rope Pushdowns', category: 'Triceps' },
+  { name: 'Skull Crushers (EZ Bar)', category: 'Triceps' },
+  { name: 'Close-Grip Bench Press', category: 'Triceps' },
+  { name: 'Diamond Push-ups', category: 'Triceps' },
+  { name: 'Cable V-Bar Pushdowns', category: 'Triceps' },
+  { name: 'Tricep Dumbbell Kickbacks', category: 'Triceps' },
+  { name: 'Bench Dips', category: 'Triceps' },
+  { name: 'Machine Tricep Pressdown', category: 'Triceps' },
   // LEGS
   { name: 'Back Squat (Barbell)', category: 'Legs' },
   { name: 'Leg Press', category: 'Legs' },
@@ -293,10 +293,10 @@ export default function App() {
     return !!history[todayStr];
   }, [history]);
 
-  // --- RECOVERY MATRIX COMPUTATION ---
+  // --- RECOVERY MATRIX COMPUTATION (SPLIT BICEPS & TRICEPS) ---
   const recoveryMatrix = useMemo(() => {
     const now = Date.now();
-    const categories = { Chest: 0, Back: 0, Shoulders: 0, Arms: 0, Legs: 0, Core: 0 };
+    const categories = { Chest: 0, Back: 0, Shoulders: 0, Biceps: 0, Triceps: 0, Legs: 0, Core: 0 };
     
     // Scan all history entries for workouts in the last 48 hours
     Object.values(history).forEach((entry) => {
@@ -1117,14 +1117,12 @@ export default function App() {
                     <View key={wIdx} style={{ marginRight: 4 }}>
                       {week.map((dateStr) => {
                         const isLogged = !!history[dateStr];
-                        const loggedItem = history[dateStr];
-                        const cellColor = loggedItem?.color || THEME.success;
                         return (
                           <TouchableOpacity 
                             key={dateStr}
                             style={[
                               styles.heatmapCell, 
-                              isLogged && { backgroundColor: cellColor }
+                              isLogged && { backgroundColor: THEME.success }
                             ]}
                             onPress={() => {
                               setSelectedHistoryDate(dateStr);
