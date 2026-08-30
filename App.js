@@ -1,4 +1,4 @@
-name=App_2.js
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
