@@ -10,7 +10,6 @@ import {
   Alert,
   SafeAreaView,
   StatusBar,
-  KeyboardAvoidingView,
   Platform
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -39,84 +38,93 @@ const ROUTINE_COLORS = {
   Gray: '#6B7280',   
 };
 
-const BASE_EXERCISE_POOL = [
-  'Pull-ups (Bodyweight / Weighted)',
-  'Chin-ups (Bodyweight / Weighted)',
-  'Dips (Chest Focus)',
-  'Dips (Triceps Focus)',
-  'Flat Bench Press (Barbell)',
-  'Incline Dumbbell Press',
-  'Decline Barbell Press',
-  'Dumbbell Chest Flys',
-  'Cable Crossover Flys',
-  'Push-ups (Standard / Deficit)',
-  'Machine Chest Press',
-  'Pec Deck Flys',
-  'Incline Barbell Press',
-  'Hammer Strength Chest Press',
-  'Lat Pulldown (Wide Grip)',
-  'Barbell Rows',
-  'One-Arm Dumbbell Rows',
-  'Seated Cable Rows (Close Grip)',
-  'High-to-Low Cable Row',
-  'T-Bar Rows',
-  'Conventional Deadlift',
-  'Hyperextensions (Back Extensions)',
-  'Rack Pulls',
-  'Straight-Arm Cable Pulldowns',
-  'Seated Row (Wide Grip)',
-  'Overhead Press (Barbell)',
-  'Seated Dumbbell Shoulder Press',
-  'Lateral Raises (Dumbbell)',
-  'Cable Lateral Raises',
-  'Front Raises (Dumbbell / Cable)',
-  'Rear Delt Flys (Pec Deck)',
-  'Arnold Press',
-  'Dumbbell Shrugs',
-  'Upright Rows (Barbell / Cable)',
-  'Face Pulls (Rope)',
-  'Push Press',
-  'Barbell Curls',
-  'Dumbbell Alternating Curls',
-  'Hammer Curls',
-  'Preacher Curls (EZ Bar)',
-  'Concentration Curls',
-  'Incline Dumbbell Curls',
-  'Cable Curls (Rope / Straight Bar)',
-  'Spider Curls',
-  'Bayesian Curls',
-  'Zottman Curls',
-  'Overhead Tricep Extension (Dumbbell)',
-  'Tricep Rope Pushdowns',
-  'Skull Crushers (EZ Bar)',
-  'Close-Grip Bench Press',
-  'Diamond Push-ups',
-  'Cable V-Bar Pushdowns',
-  'Tricep Dumbbell Kickbacks',
-  'Bench Dips',
-  'Machine Tricep Pressdown',
-  'Back Squat (Barbell)',
-  'Leg Press',
-  'Romanian Deadlift (Barbell / Dumbbell)',
-  'Leg Extensions (Machine)',
-  'Seated Leg Curl',
-  'Lying Leg Curl',
-  'Walking Lunges',
-  'Bulgarian Split Squats',
-  'Standing Calf Raises',
-  'Hip Thrusts (Barbell)',
-  'Plank (Standard / Weighted)',
-  'Abdominal Crunches',
-  'Hanging Leg Raises',
-  'Russian Twists',
-  'Ab Wheel Rollouts',
-  'Reverse Crunches',
-  'Cable Woodchoppers',
-  'Hanging Knee Raises',
-  'Bicycle Crunches',
-  'Bird Dog'
+// FULL 75-EXERCISE DICTIONARY WITH CATEGORY TAGS
+const EXERCISE_DICTIONARY = [
+  // CHEST
+  { name: 'Pull-ups (Bodyweight / Weighted)', category: 'Pull' },
+  { name: 'Chin-ups (Bodyweight / Weighted)', category: 'Pull' },
+  { name: 'Dips (Chest Focus)', category: 'Chest' },
+  { name: 'Dips (Triceps Focus)', category: 'Arms' },
+  { name: 'Flat Bench Press (Barbell)', category: 'Chest' },
+  { name: 'Incline Dumbbell Press', category: 'Chest' },
+  { name: 'Decline Barbell Press', category: 'Chest' },
+  { name: 'Dumbbell Chest Flys', category: 'Chest' },
+  { name: 'Cable Crossover Flys', category: 'Chest' },
+  { name: 'Push-ups (Standard / Deficit)', category: 'Chest' },
+  { name: 'Machine Chest Press', category: 'Chest' },
+  { name: 'Pec Deck Flys', category: 'Chest' },
+  { name: 'Incline Barbell Press', category: 'Chest' },
+  { name: 'Hammer Strength Chest Press', category: 'Chest' },
+  // BACK
+  { name: 'Lat Pulldown (Wide Grip)', category: 'Back' },
+  { name: 'Barbell Rows', category: 'Back' },
+  { name: 'One-Arm Dumbbell Rows', category: 'Back' },
+  { name: 'Seated Cable Rows (Close Grip)', category: 'Back' },
+  { name: 'High-to-Low Cable Row', category: 'Back' },
+  { name: 'T-Bar Rows', category: 'Back' },
+  { name: 'Conventional Deadlift', category: 'Back' },
+  { name: 'Hyperextensions (Back Extensions)', category: 'Back' },
+  { name: 'Rack Pulls', category: 'Back' },
+  { name: 'Straight-Arm Cable Pulldowns', category: 'Back' },
+  { name: 'Seated Row (Wide Grip)', category: 'Back' },
+  // SHOULDERS
+  { name: 'Overhead Press (Barbell)', category: 'Shoulders' },
+  { name: 'Seated Dumbbell Shoulder Press', category: 'Shoulders' },
+  { name: 'Lateral Raises (Dumbbell)', category: 'Shoulders' },
+  { name: 'Cable Lateral Raises', category: 'Shoulders' },
+  { name: 'Front Raises (Dumbbell / Cable)', category: 'Shoulders' },
+  { name: 'Rear Delt Flys (Pec Deck)', category: 'Shoulders' },
+  { name: 'Arnold Press', category: 'Shoulders' },
+  { name: 'Dumbbell Shrugs', category: 'Shoulders' },
+  { name: 'Upright Rows (Barbell / Cable)', category: 'Shoulders' },
+  { name: 'Face Pulls (Rope)', category: 'Shoulders' },
+  { name: 'Push Press', category: 'Shoulders' },
+  // BICEPS / ARMS
+  { name: 'Barbell Curls', category: 'Arms' },
+  { name: 'Dumbbell Alternating Curls', category: 'Arms' },
+  { name: 'Hammer Curls', category: 'Arms' },
+  { name: 'Preacher Curls (EZ Bar)', category: 'Arms' },
+  { name: 'Concentration Curls', category: 'Arms' },
+  { name: 'Incline Dumbbell Curls', category: 'Arms' },
+  { name: 'Cable Curls (Rope / Straight Bar)', category: 'Arms' },
+  { name: 'Spider Curls', category: 'Arms' },
+  { name: 'Bayesian Curls', category: 'Arms' },
+  { name: 'Zottman Curls', category: 'Arms' },
+  // TRICEPS / ARMS
+  { name: 'Overhead Tricep Extension (Dumbbell)', category: 'Arms' },
+  { name: 'Tricep Rope Pushdowns', category: 'Arms' },
+  { name: 'Skull Crushers (EZ Bar)', category: 'Arms' },
+  { name: 'Close-Grip Bench Press', category: 'Arms' },
+  { name: 'Diamond Push-ups', category: 'Arms' },
+  { name: 'Cable V-Bar Pushdowns', category: 'Arms' },
+  { name: 'Tricep Dumbbell Kickbacks', category: 'Arms' },
+  { name: 'Bench Dips', category: 'Arms' },
+  { name: 'Machine Tricep Pressdown', category: 'Arms' },
+  // LEGS
+  { name: 'Back Squat (Barbell)', category: 'Legs' },
+  { name: 'Leg Press', category: 'Legs' },
+  { name: 'Romanian Deadlift (Barbell / Dumbbell)', category: 'Legs' },
+  { name: 'Leg Extensions (Machine)', category: 'Legs' },
+  { name: 'Seated Leg Curl', category: 'Legs' },
+  { name: 'Lying Leg Curl', category: 'Legs' },
+  { name: 'Walking Lunges', category: 'Legs' },
+  { name: 'Bulgarian Split Squats', category: 'Legs' },
+  { name: 'Standing Calf Raises', category: 'Legs' },
+  { name: 'Hip Thrusts (Barbell)', category: 'Legs' },
+  // ABS / CORE
+  { name: 'Plank (Standard / Weighted)', category: 'Core' },
+  { name: 'Abdominal Crunches', category: 'Core' },
+  { name: 'Hanging Leg Raises', category: 'Core' },
+  { name: 'Russian Twists', category: 'Core' },
+  { name: 'Ab Wheel Rollouts', category: 'Core' },
+  { name: 'Reverse Crunches', category: 'Core' },
+  { name: 'Cable Woodchoppers', category: 'Core' },
+  { name: 'Hanging Knee Raises', category: 'Core' },
+  { name: 'Bicycle Crunches', category: 'Core' },
+  { name: 'Bird Dog', category: 'Core' }
 ];
 
+const BASE_EXERCISE_POOL = EXERCISE_DICTIONARY.map(e => e.name);
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const STORAGE_KEYS = {
@@ -284,6 +292,63 @@ export default function App() {
     return !!history[todayStr];
   }, [history]);
 
+  // --- RECOVERY MATRIX COMPUTATION ---
+  const recoveryMatrix = useMemo(() => {
+    const now = Date.now();
+    const categories = { Chest: 0, Back: 0, Shoulders: 0, Arms: 0, Legs: 0, Core: 0 };
+    
+    // Scan all history entries for workouts in the last 48 hours
+    Object.values(history).forEach((entry) => {
+      const timestamp = entry.timestamp || 0;
+      const hoursAgo = (now - timestamp) / (1000 * 60 * 60);
+      
+      if (hoursAgo >= 0 && hoursAgo <= 48) {
+        (entry.exercises || []).forEach((ex) => {
+          const match = EXERCISE_DICTIONARY.find(
+            d => d.name.toLowerCase() === ex.name.toLowerCase()
+          );
+          if (match && categories.hasOwnProperty(match.category)) {
+            categories[match.category] += ex.sets ? ex.sets.length : 0;
+          }
+        });
+      }
+    });
+
+    return Object.entries(categories).map(([category, volume]) => {
+      let status = 'Fresh';
+      let color = THEME.success;
+      if (volume > 12) {
+        status = 'Exhausted';
+        color = '#EF4444';
+      } else if (volume > 5) {
+        status = 'Fatigued';
+        color = '#F59E0B';
+      } else if (volume > 0) {
+        status = 'Recovering';
+        color = '#3B82F6';
+      }
+      return { category, volume, status, color };
+    });
+  }, [history]);
+
+  // --- PROGRESSIVE OVERLOAD DIFFERENTIAL HELPER ---
+  const getPreviousPerformance = (exerciseName, currentDateStr) => {
+    const sortedDates = Object.keys(history)
+      .filter(d => d < currentDateStr)
+      .sort((a, b) => new Date(b) - new Date(a));
+
+    for (const d of sortedDates) {
+      const pastEntry = history[d];
+      const foundEx = pastEntry.exercises?.find(
+        e => e.name.toLowerCase() === exerciseName.toLowerCase()
+      );
+      if (foundEx && foundEx.sets) {
+        return foundEx.sets;
+      }
+    }
+    return null;
+  };
+
   // --- ROUTINE & EXERCISE ORDERING / EDITING ---
   const handleMoveExerciseInCreator = (index, direction) => {
     const targetIndex = index + direction;
@@ -397,6 +462,13 @@ export default function App() {
   };
 
   // --- SPONTANEOUS SESSION HANDLERS ---
+  const handleStartSpontaneousSession = () => {
+    setIsSpontaneousMode(true);
+    setSpontaneousExercises([]);
+    setActiveWorkoutLogs({});
+    setCurrentTab('today');
+  };
+
   const handleAddSpontaneousExercise = () => {
     const exName = spontaneousExInput.trim();
     if (!exName) return;
@@ -450,7 +522,7 @@ export default function App() {
       ...history,
       [dateStr]: {
         routineName: 'Spontaneous Session',
-        color: '#FFFFFF',
+        color: THEME.accent,
         exercises: structuredExercises,
         timestamp: Date.now()
       }
@@ -681,7 +753,17 @@ export default function App() {
           <Ionicons name="flash" size={26} color={THEME.accent} style={{ marginRight: 6 }} />
           <Text style={styles.headerTitle}>KatTracker</Text>
         </View>
-        <Text style={styles.headerSubtitle}>{getLocalDateString()}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* FEATURE 1: SINGLE LIGHTNING BOLT BUTTON (⚡ START SPONTANEOUS SESSION) */}
+          <TouchableOpacity 
+            style={styles.lightningBtn} 
+            onPress={handleStartSpontaneousSession}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="flash-sharp" size={20} color="#FFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerSubtitle}>{getLocalDateString()}</Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
@@ -691,6 +773,26 @@ export default function App() {
           <View>
             <Text style={styles.viewTitle}>Today's Workout</Text>
             
+            {/* FEATURE 2: 48-HOUR RECOVERY MATRIX CARD */}
+            <View style={styles.card}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.cardTitle}>48-Hour Recovery Matrix 🧬</Text>
+                <Text style={styles.cardMutedText}>Auto-calculated</Text>
+              </View>
+              <View style={styles.recoveryGrid}>
+                {recoveryMatrix.map((item) => (
+                  <View key={item.category} style={styles.recoveryBadge}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.recoveryCategory}>{item.category}</Text>
+                      <View style={[styles.statusDot, { backgroundColor: item.color }]} />
+                    </View>
+                    <Text style={[styles.recoveryStatus, { color: item.color }]}>{item.status}</Text>
+                    <Text style={styles.recoveryVolume}>{item.volume} sets / 48h</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
             {isTodayCompleted ? (
               <View style={styles.completedBannerCard}>
                 <Ionicons name="checkmark-circle" size={44} color={THEME.success} style={{ marginBottom: 10 }} />
@@ -700,210 +802,37 @@ export default function App() {
                   <Text style={[styles.primaryButtonText, { color: THEME.text, fontSize: 13 }]}>Review Performance Log</Text>
                 </TouchableOpacity>
               </View>
-            ) : (
-              <>
-                {!isSpontaneousMode ? (
-                  <>
-                    {/* STANDARD / SCHEDULED WORKOUT CARD */}
-                    {currentActiveRoutine ? (
-                      <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: currentActiveRoutine.color }]}>
-                        <View style={styles.rowBetween}>
-                          <View style={{ flex: 1, marginRight: 8 }}>
-                            <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
-                            <Text style={styles.cardMutedText}>
-                              {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for today, ${getTodayDayName()}`}
-                            </Text>
-                          </View>
-                          <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
-                            <Text style={{ color: currentActiveRoutine.color, fontWeight: '700', fontSize: 12 }}>
-                              {currentActiveRoutine.exercises.length} Exercises
-                            </Text>
-                          </View>
-                        </View>
-                        {impromptuRoutine && (
-                          <TouchableOpacity style={styles.clearImpromptuBtn} onPress={() => setImpromptuRoutine(null)}>
-                            <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600' }}>Cancel Custom Choice</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    ) : (
-                      <View style={styles.card}>
-                        <Text style={styles.cardTitle}>Unscheduled / Flexible Day 🔓</Text>
-                        <Text style={styles.cardMutedText}>No routine is locked into today's matrix. Select a blueprint configuration on-the-fly below:</Text>
-                        
-                        <View style={{ marginTop: 12 }}>
-                          {routines.map(r => (
-                            <TouchableOpacity 
-                              key={r.id} 
-                              style={[styles.flexibleRoutineItem, { borderLeftColor: r.color }]}
-                              onPress={() => setImpromptuRoutine(r)}
-                            >
-                              <Text style={{ color: THEME.text, fontWeight: '600' }}>Launch {r.name}</Text>
-                              <Ionicons name="play-circle" size={20} color={r.color} />
-                            </TouchableOpacity>
-                          ))}
-                          <TouchableOpacity style={[styles.primaryButton, { marginTop: 10, backgroundColor: THEME.surfaceLight }]} onPress={() => setCurrentTab('routines')}>
-                            <Text style={[styles.primaryButtonText, { color: THEME.text }]}>+ Manage Blueprint Blueprints</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
+            ) : isSpontaneousMode ? (
+              /* SPONTANEOUS WORKOUT LIVE ENGINE */
+              <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: THEME.accent }]}>
+                <View style={styles.rowBetween}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>⚡ Spontaneous Session</Text>
+                    <Text style={styles.cardMutedText}>Freestyle workout session on the fly</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={[styles.primaryButton, { paddingHorizontal: 12, paddingVertical: 6 }]}
+                    onPress={() => setSpontaneousModalVisible(true)}
+                  >
+                    <Text style={{ color: THEME.text, fontWeight: '700', fontSize: 12 }}>+ Add Exercise</Text>
+                  </TouchableOpacity>
+                </View>
 
-                    {/* TOGGLE WORKOUT LOGGING BLOCKS */}
-                    {currentActiveRoutine && (
-                      <View style={styles.toggleCard}>
-                        <View style={styles.rowBetween}>
-                          <Text style={styles.toggleText}>Ready to log today's session?</Text>
-                          <TouchableOpacity 
-                            style={[styles.checkbox, isGymDayChecked && styles.checkboxChecked]}
-                            onPress={() => setIsGymDayChecked(!isGymDayChecked)}
-                          >
-                            {isGymDayChecked && <Ionicons name="checkmark" size={16} color={THEME.text} />}
-                          </TouchableOpacity>
-                        </View>
-
-                        {isGymDayChecked && (
-                          <View style={{ marginTop: 20 }}>
-                            {timerSeconds > 0 && (
-                              <View style={styles.timerBanner}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                  <Ionicons name="stopwatch" size={18} color={THEME.accent} style={{ marginRight: 6 }} />
-                                  <Text style={styles.timerBannerText}>
-                                    Satzpause läuft: <Text style={{ color: THEME.accent }}>{formatTimerString(timerSeconds)}</Text>
-                                  </Text>
-                                </View>
-                                <TouchableOpacity style={styles.timerCancelBtn} onPress={() => { setTimerSeconds(0); setTimerActive(false); }}>
-                                  <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 12 }}>Skip</Text>
-                                </TouchableOpacity>
-                              </View>
-                            )}
-
-                            {currentActiveRoutine.exercises.map((ex) => (
-                              <View key={ex.id} style={styles.exerciseLogBlock}>
-                                <Text style={styles.exerciseLogName}>{ex.name}</Text>
-                                
-                                <View style={[styles.logMetricsRowHeader, { marginBottom: 4 }]}>
-                                  <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
-                                  <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
-                                  <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>Reps Done</Text>
-                                  <Text style={[styles.columnLabel, { width: 35 }]}>Timer</Text>
-                                </View>
-
-                                {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
-                                  const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
-                                  return (
-                                    <View key={setIndex} style={[styles.logMetricsRowHeader, { marginBottom: 8 }, isSetDone && styles.rowCompletedHighlight]}>
-                                      <TouchableOpacity 
-                                        style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
-                                        onPress={() => handleToggleSetComplete(ex.id, setIndex)}
-                                      >
-                                        {isSetDone ? (
-                                          <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
-                                        ) : (
-                                          <Text style={styles.setCheckText}>{setIndex + 1}</Text>
-                                        )}
-                                      </TouchableOpacity>
-
-                                      <View style={{ flex: 1, marginRight: 8 }}>
-                                        <TextInput
-                                          style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
-                                          placeholder="0.0"
-                                          placeholderTextColor="#555"
-                                          keyboardType="decimal-pad" 
-                                          editable={!isSetDone}
-                                          value={activeWorkoutLogs[ex.id]?.[setIndex]?.weight || ''}
-                                          onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
-                                        />
-                                      </View>
-                                      
-                                      <View style={{ flex: 1, marginRight: 8 }}>
-                                        <TextInput
-                                          style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
-                                          placeholder="0"
-                                          placeholderTextColor="#555"
-                                          keyboardType="numeric"
-                                          editable={!isSetDone}
-                                          value={activeWorkoutLogs[ex.id]?.[setIndex]?.reps || ''}
-                                          onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
-                                        />
-                                      </View>
-
-                                      <TouchableOpacity 
-                                        style={[styles.inlineTimerBtn, timerActive && { borderColor: THEME.accentMuted }]} 
-                                        onPress={handleTriggerTimer}
-                                      >
-                                        <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
-                                      </TouchableOpacity>
-                                    </View>
-                                  );
-                                })}
-                              </View>
-                            ))}
-
-                            <TouchableOpacity style={styles.primaryButton} onPress={handleSaveWorkoutSession}>
-                              <Text style={styles.primaryButtonText}>Commit & Save Workout Metrics</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    {/* SPONTANEOUS SESSION BUTTON */}
-                    <TouchableOpacity 
-                      style={styles.spontaneousLaunchBtn} 
-                      onPress={() => {
-                        setIsSpontaneousMode(true);
-                        setSpontaneousExercises([]);
-                        setActiveWorkoutLogs({});
-                      }}
-                    >
-                      <Ionicons name="flash-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                      <Text style={styles.spontaneousLaunchBtnText}>⚡ Start Spontaneous Session</Text>
-                    </TouchableOpacity>
-                  </>
+                {spontaneousExercises.length === 0 ? (
+                  <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                    <Text style={{ color: THEME.textMuted }}>No exercises added yet. Tap "+ Add Exercise" to build your session!</Text>
+                  </View>
                 ) : (
-                  /* SPONTANEOUS SESSION LIVE LOGGING INTERFACE */
-                  <View style={[styles.card, { borderColor: '#FFFFFF', borderWidth: 1.5 }]}>
-                    <View style={styles.rowBetween}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Ionicons name="flame" size={24} color="#FFFFFF" style={{ marginRight: 8 }} />
-                        <Text style={[styles.cardTitle, { color: '#FFFFFF' }]}>Spontaneous Session</Text>
-                      </View>
-                      <TouchableOpacity onPress={() => setIsSpontaneousMode(false)}>
-                        <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 13 }}>Exit</Text>
-                      </TouchableOpacity>
-                    </View>
-                    
-                    <Text style={[styles.cardMutedText, { marginBottom: 16 }]}>
-                      Unplanned session active. Add exercises freely below and log your reps/weights!
-                    </Text>
-
-                    {/* ADD EXERCISE BUTTON */}
-                    <TouchableOpacity 
-                      style={styles.addExSpontaneousBtn} 
-                      onPress={() => setSpontaneousModalVisible(true)}
-                    >
-                      <Ionicons name="add-circle-outline" size={20} color={THEME.text} style={{ marginRight: 6 }} />
-                      <Text style={{ color: THEME.text, fontWeight: '700', fontSize: 14 }}>+ Add Exercise</Text>
-                    </TouchableOpacity>
-
-                    {/* DYNAMIC SPONTANEOUS EXERCISE LIST */}
+                  <View style={{ marginTop: 16 }}>
                     {spontaneousExercises.map((ex) => (
-                      <View key={ex.id} style={[styles.exerciseLogBlock, { marginTop: 14 }]}>
-                        <View style={styles.rowBetween}>
-                          <Text style={styles.exerciseLogName}>{ex.name}</Text>
-                          <TouchableOpacity onPress={() => setSpontaneousExercises(spontaneousExercises.filter(e => e.id !== ex.id))}>
-                            <Ionicons name="close-circle-sharp" size={18} color="#EF4444" />
-                          </TouchableOpacity>
-                        </View>
-                        
-                        <View style={[styles.logMetricsRowHeader, { marginBottom: 4, marginTop: 6 }]}>
+                      <View key={ex.id} style={styles.exerciseLogBlock}>
+                        <Text style={styles.exerciseLogName}>{ex.name}</Text>
+                        <View style={[styles.logMetricsRowHeader, { marginBottom: 4 }]}>
                           <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
                           <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
                           <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>Reps Done</Text>
-                          <Text style={[styles.columnLabel, { width: 35 }]}>Timer</Text>
+                          <Text style={[styles.columnLabel, { width: 35 }]}>Done</Text>
                         </View>
-
                         {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
                           const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
                           return (
@@ -918,7 +847,6 @@ export default function App() {
                                   <Text style={styles.setCheckText}>{setIndex + 1}</Text>
                                 )}
                               </TouchableOpacity>
-
                               <View style={{ flex: 1, marginRight: 8 }}>
                                 <TextInput
                                   style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
@@ -930,7 +858,6 @@ export default function App() {
                                   onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
                                 />
                               </View>
-                              
                               <View style={{ flex: 1, marginRight: 8 }}>
                                 <TextInput
                                   style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
@@ -942,11 +869,7 @@ export default function App() {
                                   onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
                                 />
                               </View>
-
-                              <TouchableOpacity 
-                                style={[styles.inlineTimerBtn, timerActive && { borderColor: THEME.accentMuted }]} 
-                                onPress={handleTriggerTimer}
-                              >
+                              <TouchableOpacity style={styles.timerTriggerBtn} onPress={handleTriggerTimer}>
                                 <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
                               </TouchableOpacity>
                             </View>
@@ -955,13 +878,154 @@ export default function App() {
                       </View>
                     ))}
 
-                    {spontaneousExercises.length > 0 && (
-                      <TouchableOpacity 
-                        style={[styles.primaryButton, { marginTop: 16, backgroundColor: '#FFFFFF' }]} 
-                        onPress={handleSaveSpontaneousSession}
-                      >
-                        <Text style={[styles.primaryButtonText, { color: '#121212' }]}>Save Spontaneous Workout</Text>
+                    <TouchableOpacity style={[styles.primaryButton, { marginTop: 16 }]} onPress={handleSaveSpontaneousSession}>
+                      <Text style={styles.primaryButtonText}>Finish & Lock Spontaneous Workout</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.clearImpromptuBtn, { marginTop: 8 }]} onPress={() => setIsSpontaneousMode(false)}>
+                      <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>Cancel Spontaneous Session</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <>
+                {/* STANDARD / SCHEDULED WORKOUT CARD */}
+                {currentActiveRoutine ? (
+                  <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: currentActiveRoutine.color }]}>
+                    <View style={styles.rowBetween}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
+                        <Text style={styles.cardMutedText}>
+                          {impromptuRoutine ? 'Loaded on-the-fly session' : `Scheduled for today, ${getTodayDayName()}`}
+                        </Text>
+                      </View>
+                      <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
+                        <Text style={{ color: currentActiveRoutine.color, fontWeight: '700', fontSize: 12 }}>
+                          {currentActiveRoutine.exercises.length} Exercises
+                        </Text>
+                      </View>
+                    </View>
+                    {impromptuRoutine && (
+                      <TouchableOpacity style={styles.clearImpromptuBtn} onPress={() => setImpromptuRoutine(null)}>
+                        <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600' }}>Cancel Custom Choice</Text>
                       </TouchableOpacity>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Unscheduled / Flexible Day 🔓</Text>
+                    <Text style={styles.cardMutedText}>No routine is locked into today's matrix. Select a blueprint configuration on-the-fly below:</Text>
+                    
+                    <View style={{ marginTop: 12 }}>
+                      {routines.map(r => (
+                        <TouchableOpacity 
+                          key={r.id} 
+                          style={[styles.flexibleRoutineItem, { borderLeftColor: r.color }]}
+                          onPress={() => setImpromptuRoutine(r)}
+                        >
+                          <Text style={{ color: THEME.text, fontWeight: '600' }}>Launch {r.name}</Text>
+                          <Ionicons name="play-circle" size={20} color={r.color} />
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity style={[styles.primaryButton, { marginTop: 10, backgroundColor: THEME.surfaceLight }]} onPress={() => setCurrentTab('routines')}>
+                        <Text style={[styles.primaryButtonText, { color: THEME.text }]}>+ Manage Blueprint Blueprints</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {/* TOGGLE WORKOUT LOGGING BLOCKS */}
+                {currentActiveRoutine && (
+                  <View style={styles.toggleCard}>
+                    <View style={styles.rowBetween}>
+                      <Text style={styles.toggleText}>Ready to log today's session?</Text>
+                      <TouchableOpacity 
+                        style={[styles.checkbox, isGymDayChecked && styles.checkboxChecked]}
+                        onPress={() => setIsGymDayChecked(!isGymDayChecked)}
+                      >
+                        {isGymDayChecked && <Ionicons name="checkmark" size={16} color={THEME.text} />}
+                      </TouchableOpacity>
+                    </View>
+
+                    {isGymDayChecked && (
+                      <View style={{ marginTop: 20 }}>
+                        {timerSeconds > 0 && (
+                          <View style={styles.timerBanner}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Ionicons name="stopwatch" size={18} color={THEME.accent} style={{ marginRight: 6 }} />
+                              <Text style={styles.timerBannerText}>
+                                Satzpause läuft: <Text style={{ color: THEME.accent }}>{formatTimerString(timerSeconds)}</Text>
+                              </Text>
+                            </View>
+                            <TouchableOpacity style={styles.timerCancelBtn} onPress={() => { setTimerSeconds(0); setTimerActive(false); }}>
+                              <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 12 }}>Skip</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
+                        {currentActiveRoutine.exercises.map((ex) => (
+                          <View key={ex.id} style={styles.exerciseLogBlock}>
+                            <Text style={styles.exerciseLogName}>{ex.name}</Text>
+                            
+                            <View style={[styles.logMetricsRowHeader, { marginBottom: 4 }]}>
+                              <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
+                              <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
+                              <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>Reps Done</Text>
+                              <Text style={[styles.columnLabel, { width: 35 }]}>Timer</Text>
+                            </View>
+
+                            {Array.from({ length: ex.defaultSets }).map((_, setIndex) => {
+                              const isSetDone = activeWorkoutLogs[ex.id]?.[setIndex]?.done || false;
+                              return (
+                                <View key={setIndex} style={[styles.logMetricsRowHeader, { marginBottom: 8 }, isSetDone && styles.rowCompletedHighlight]}>
+                                  <TouchableOpacity 
+                                    style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
+                                    onPress={() => handleToggleSetComplete(ex.id, setIndex)}
+                                  >
+                                    {isSetDone ? (
+                                      <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
+                                    ) : (
+                                      <Text style={styles.setCheckText}>{setIndex + 1}</Text>
+                                    )}
+                                  </TouchableOpacity>
+
+                                  <View style={{ flex: 1, marginRight: 8 }}>
+                                    <TextInput
+                                      style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
+                                      placeholder="0.0"
+                                      placeholderTextColor="#555"
+                                      keyboardType="decimal-pad" 
+                                      editable={!isSetDone}
+                                      value={activeWorkoutLogs[ex.id]?.[setIndex]?.weight || ''}
+                                      onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'weight', val)}
+                                    />
+                                  </View>
+                                  
+                                  <View style={{ flex: 1, marginRight: 8 }}>
+                                    <TextInput
+                                      style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
+                                      placeholder="0"
+                                      placeholderTextColor="#555"
+                                      keyboardType="numeric"
+                                      editable={!isSetDone}
+                                      value={activeWorkoutLogs[ex.id]?.[setIndex]?.reps || ''}
+                                      onChangeText={(val) => handleUpdateLogCell(ex.id, setIndex, 'reps', val)}
+                                    />
+                                  </View>
+
+                                  <TouchableOpacity style={styles.timerTriggerBtn} onPress={handleTriggerTimer}>
+                                    <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
+                                  </TouchableOpacity>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        ))}
+
+                        <TouchableOpacity style={[styles.primaryButton, { marginTop: 10 }]} onPress={handleSaveWorkoutSession}>
+                          <Text style={styles.primaryButtonText}>Finish & Save Session</Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </View>
                 )}
@@ -970,124 +1034,94 @@ export default function App() {
           </View>
         )}
 
-        {/* --- VIEW 2: ROUTINE BLUEPRINTS LIST --- */}
+        {/* --- VIEW 2: BLUEPRINTS / ROUTINES --- */}
         {currentTab === 'routines' && (
           <View>
             <View style={styles.rowBetween}>
               <Text style={styles.viewTitle}>Workout Blueprints</Text>
-              <TouchableOpacity style={styles.addButtonSmall} onPress={() => setRoutineModalVisible(true)}>
-                <Ionicons name="add" size={20} color={THEME.text} />
-                <Text style={{ color: THEME.text, fontWeight: '600', marginLeft: 2 }}>Create</Text>
+              <TouchableOpacity style={styles.smallAccentBtn} onPress={() => setRoutineModalVisible(true)}>
+                <Ionicons name="add-sharp" size={18} color="#FFF" />
+                <Text style={styles.smallAccentBtnText}>New Routine</Text>
               </TouchableOpacity>
             </View>
 
-            {routines.length === 0 ? (
-              <View style={[styles.card, { alignItems: 'center', paddingVertical: 40 }]}>
-                <Ionicons name="layers-outline" size={48} color={THEME.textMuted} />
-                <Text style={[styles.cardTitle, { marginTop: 12 }]}>No Blueprints Found</Text>
-              </View>
-            ) : (
-              routines.map(item => (
-                <View key={item.id} style={[styles.card, { borderLeftWidth: 5, borderLeftColor: item.color }]}>
-                  <View style={styles.rowBetween}>
-                    <Text style={styles.cardTitle}>{item.name}</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <TouchableOpacity onPress={() => handleStartEditRoutine(item)} style={{ marginRight: 14, padding: 4 }}>
-                        <Ionicons name="create-outline" size={22} color={THEME.textMuted} />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => handleDeleteRoutine(item.id)} style={{ padding: 4 }}>
-                        <Ionicons name="trash-outline" size={20} color={THEME.textMuted} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 }}>
-                    {item.exercises.length === 0 ? (
-                      <View style={styles.tagBlockRest}>
-                        <Text style={{ color: THEME.textMuted, fontSize: 12 }}>Pure Rest / Recovery Target Block</Text>
-                      </View>
-                    ) : (
-                      item.exercises.map((e, idx) => (
-                        <View key={e.id || idx} style={styles.tagBlock}>
-                          <Text style={styles.tagBlockText}>{idx + 1}. {e.name} ({e.defaultSets}S)</Text>
-                        </View>
-                      ))
-                    )}
+            {routines.map(r => (
+              <View key={r.id} style={[styles.card, { borderLeftWidth: 5, borderLeftColor: r.color }]}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.cardTitle}>{r.name}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity onPress={() => handleStartEditRoutine(r)} style={{ marginRight: 12 }}>
+                      <Ionicons name="pencil" size={18} color={THEME.textMuted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDeleteRoutine(r.id)}>
+                      <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    </TouchableOpacity>
                   </View>
                 </View>
-              ))
-            )}
+
+                <View style={{ marginTop: 10 }}>
+                  {r.exercises.map((ex, idx) => (
+                    <Text key={ex.id || idx} style={{ color: THEME.textMuted, fontSize: 13, marginBottom: 2 }}>
+                      • {ex.name} ({ex.defaultSets} sets)
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            ))}
           </View>
         )}
 
-        {/* --- VIEW 3: WEEKLY PLANNER MATRIX --- */}
+        {/* --- VIEW 3: WEEKLY SCHEDULER --- */}
         {currentTab === 'schedule' && (
           <View>
-            <Text style={styles.viewTitle}>Weekly Planner Calendar</Text>
+            <Text style={styles.viewTitle}>Weekly Matrix Schedule</Text>
             {DAYS_OF_WEEK.map(day => {
-              const assignedId = schedule[day];
-              const routine = routines.find(r => r.id === assignedId);
+              const assignedRoutineId = schedule[day];
+              const routine = routines.find(r => r.id === assignedRoutineId);
               return (
-                <TouchableOpacity 
-                  key={day} 
-                  style={styles.scheduleRow}
-                  onPress={() => {
-                    setSelectedScheduleDay(day);
-                    setSchedulerModalVisible(true);
-                  }}
-                >
-                  <Text style={styles.scheduleDayName}>{day}</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    {routine ? (
-                      <View style={[styles.badge, { backgroundColor: routine.color }]}>
-                        <Text style={{ color: '#000', fontWeight: '700', fontSize: 12 }}>{routine.name}</Text>
-                      </View>
-                    ) : (
-                      <View style={[styles.badge, { backgroundColor: THEME.surfaceLight }]}>
-                        <Text style={{ color: THEME.textMuted, fontWeight: '500', fontSize: 12 }}>Flexible Slot</Text>
-                      </View>
-                    )}
-                    <Ionicons name="chevron-forward" size={16} color={THEME.textMuted} style={{ marginLeft: 8 }} />
+                <View key={day} style={styles.scheduleRowCard}>
+                  <View>
+                    <Text style={styles.dayText}>{day}</Text>
+                    <Text style={{ color: routine ? routine.color : THEME.textMuted, fontSize: 13, fontWeight: '600' }}>
+                      {routine ? routine.name : 'Rest / Unassigned'}
+                    </Text>
                   </View>
-                </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.assignBtn}
+                    onPress={() => {
+                      setSelectedScheduleDay(day);
+                      setSchedulerModalVisible(true);
+                    }}
+                  >
+                    <Text style={{ color: THEME.text, fontSize: 12, fontWeight: '600' }}>Assign Blueprint</Text>
+                  </TouchableOpacity>
+                </View>
               );
             })}
           </View>
         )}
 
-        {/* --- VIEW 4: PERFORMANCE GRAPH HISTORY --- */}
+        {/* --- VIEW 4: PERFORMANCE LOG & HEATMAP HISTORY --- */}
         {currentTab === 'history' && (
           <View>
-            <Text style={styles.viewTitle}>Performance Analytics</Text>
-
-            {/* PR DASHBOARD BUTTON ABOVE GRID */}
-            <TouchableOpacity 
-              style={styles.prDashboardBtn}
-              onPress={() => setPrModalVisible(true)}
-            >
-              <Ionicons name="trophy" size={22} color="#F59E0B" style={{ marginRight: 8 }} />
-              <Text style={styles.prDashboardBtnText}>PR Dashboard</Text>
-              <View style={styles.prBadgeCount}>
-                <Text style={{ color: '#000', fontWeight: '800', fontSize: 11 }}>{prs.length}</Text>
-              </View>
-            </TouchableOpacity>
-
+            <Text style={styles.viewTitle}>History & Metrics</Text>
+            
             <View style={styles.card}>
-              <Text style={[styles.cardTitle, { fontSize: 14, marginBottom: 12 }]}>Consistency Heatmap Graph</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 8 }}>
+              <Text style={styles.cardTitle}>Activity Matrix Heatmap</Text>
+              <Text style={styles.cardMutedText}>Past 15 Weeks Consistent Grid Performance</Text>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
                 <View style={{ flexDirection: 'row' }}>
-                  {generateHeatmapDates().map((weekArray, wIdx) => (
-                    <View key={wIdx} style={{ flexDirection: 'column' }}>
-                      {weekArray.map((dateStr) => {
-                        const metrics = history[dateStr];
-                        const squareColor = metrics ? metrics.color : THEME.surfaceLight;
-                        const isCurrentDay = dateStr === getLocalDateString();
+                  {generateHeatmapDates().map((week, wIdx) => (
+                    <View key={wIdx} style={{ marginRight: 4 }}>
+                      {week.map((dateStr) => {
+                        const isLogged = !!history[dateStr];
                         return (
-                          <TouchableOpacity
+                          <TouchableOpacity 
                             key={dateStr}
                             style={[
-                              styles.heatmapSquare, 
-                              { backgroundColor: squareColor },
-                              isCurrentDay && { borderWidth: 1.5, borderColor: THEME.accent }
+                              styles.heatmapCell, 
+                              isLogged && { backgroundColor: THEME.success }
                             ]}
                             onPress={() => {
                               setSelectedHistoryDate(dateStr);
@@ -1102,427 +1136,515 @@ export default function App() {
               </ScrollView>
             </View>
 
-            <Text style={[styles.viewTitle, { fontSize: 16, marginTop: 12 }]}>Chronological Records</Text>
+            <Text style={[styles.cardTitle, { marginTop: 16, marginBottom: 8 }]}>Log Records Timeline</Text>
             {Object.keys(history).length === 0 ? (
-              <Text style={[styles.cardMutedText, { marginTop: 8 }]}>No completed workout tracks saved inside system memory.</Text>
+              <Text style={{ color: THEME.textMuted }}>No history recorded yet.</Text>
             ) : (
-              Object.keys(history).sort((a,b) => b.localeCompare(a)).map(dateStr => (
-                <TouchableOpacity 
-                  key={dateStr} 
-                  style={[styles.card, { borderLeftWidth: 4, borderLeftColor: history[dateStr].color || THEME.accent }]}
-                  onPress={() => {
-                    setSelectedHistoryDate(dateStr);
-                    setHistoryModalVisible(true);
-                  }}
-                >
-                  <View style={styles.rowBetween}>
-                    <Text style={styles.cardTitle}>{history[dateStr].routineName}</Text>
-                    <Text style={styles.cardMutedText}>{dateStr}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-        )}
-
-        {/* --- VIEW 5: CLEAN HABIT TRACKER TAB --- */}
-        {currentTab === 'clean' && (
-          <View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.viewTitle}>Clean Trackers</Text>
-              <TouchableOpacity style={styles.addButtonSmall} onPress={() => setAddictionModalVisible(true)}>
-                <Ionicons name="add" size={20} color={THEME.text} />
-                <Text style={{ color: THEME.text, fontWeight: '600', marginLeft: 2 }}>Add New</Text>
-              </TouchableOpacity>
-            </View>
-
-            {addictions.length === 0 ? (
-              <View style={[styles.card, { alignItems: 'center', paddingVertical: 40 }]}>
-                <Ionicons name="shield-checkmark-outline" size={48} color={THEME.textMuted} />
-                <Text style={[styles.cardTitle, { marginTop: 12 }]}>No Clean Trackers Active</Text>
-              </View>
-            ) : (
-              addictions.map((item) => {
-                const todayStr = getLocalDateString();
-                const isCleanToday = !!item.history[todayStr];
-                const cleanDaysCount = Object.keys(item.history).length;
+              Object.keys(history).sort((a,b) => new Date(b) - new Date(a)).map(dateKey => {
+                const item = history[dateKey];
                 return (
-                  <View key={item.id} style={[styles.card, { borderLeftWidth: 5, borderLeftColor: item.color }]}>
+                  <TouchableOpacity 
+                    key={dateKey} 
+                    style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.color || THEME.accent }]}
+                    onPress={() => {
+                      setSelectedHistoryDate(dateKey);
+                      setHistoryModalVisible(true);
+                    }}
+                  >
                     <View style={styles.rowBetween}>
-                      <View style={{ flex: 1, marginRight: 8 }}>
-                        <Text style={styles.cardTitle}>{item.name}</Text>
-                        <Text style={[styles.cardMutedText, { color: item.color, fontWeight: '700' }]}>
-                          Total Logged Safe Days: {cleanDaysCount}
-                        </Text>
-                      </View>
-                      <TouchableOpacity onPress={() => handleDeleteAddiction(item.id)} style={{ padding: 6 }}>
-                        <Ionicons name="trash-outline" size={18} color={THEME.textMuted} />
-                      </TouchableOpacity>
+                      <Text style={{ color: THEME.text, fontWeight: '700' }}>{dateKey}</Text>
+                      <Text style={{ color: item.color || THEME.accent, fontWeight: '700' }}>{item.routineName}</Text>
                     </View>
-
-                    <TouchableOpacity 
-                      style={[styles.cleanCheckInBtn, { borderColor: item.color }, isCleanToday && { backgroundColor: item.color + '22' }]}
-                      onPress={() => handleToggleCleanDay(item.id)}
-                    >
-                      <Ionicons name={isCleanToday ? "checkmark-circle" : "ellipse-outline"} size={20} color={isCleanToday ? item.color : THEME.textMuted} style={{ marginRight: 8 }} />
-                      <Text style={{ color: isCleanToday ? THEME.text : THEME.textMuted, fontWeight: '700', fontSize: 13 }}>
-                        {isCleanToday ? "Safe & Clean Today!" : "Mark Clean For Today"}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <Text style={[styles.cardMutedText, { fontSize: 11, marginTop: 14, marginBottom: 6, fontWeight: '600' }]}>
-                      Sobriety Consistency Matrix Grid:
+                    <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>
+                      {item.exercises ? item.exercises.length : 0} Exercises Completed
                     </Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      <View style={{ flexDirection: 'row' }}>
-                        {generateHeatmapDates().map((weekArray, wIdx) => (
-                          <View key={wIdx} style={{ flexDirection: 'column' }}>
-                            {weekArray.map((dateStr) => {
-                              const markedClean = !!item.history[dateStr];
-                              const cellBg = markedClean ? item.color : THEME.surfaceLight;
-                              return (
-                                <View key={dateStr} style={[styles.heatmapSquare, { backgroundColor: cellBg, width: 12, height: 12, margin: 1.5 }, dateStr === todayStr && { borderWidth: 1, borderColor: THEME.text }]} />
-                              );
-                            })}
-                          </View>
-                        ))}
-                      </View>
-                    </ScrollView>
-                  </View>
+                  </TouchableOpacity>
                 );
               })
             )}
           </View>
         )}
-      </ScrollView>
 
-      {/* --- MODALS --- */}
-
-      {/* PR DASHBOARD MODAL */}
-      <Modal animationType="slide" transparent visible={prModalVisible} onRequestClose={() => setPrModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="trophy" size={24} color="#F59E0B" style={{ marginRight: 8 }} />
-                <Text style={styles.modalTitle}>Personal Record (PR) Menu</Text>
-              </View>
-              <TouchableOpacity onPress={() => setPrModalVisible(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={24} color={THEME.text} />
+        {/* --- VIEW 5: PR TRACKER ENGINE --- */}
+        {currentTab === 'prs' && (
+          <View>
+            <View style={styles.rowBetween}>
+              <Text style={styles.viewTitle}>Personal Records 🏆</Text>
+              <TouchableOpacity style={styles.smallAccentBtn} onPress={() => setPrModalVisible(true)}>
+                <Ionicons name="add-sharp" size={18} color="#FFF" />
+                <Text style={styles.smallAccentBtnText}>Add PR</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {/* ADD NEW PR FORM */}
-              <View style={[styles.card, { backgroundColor: THEME.surfaceLight, marginTop: 4 }]}>
-                <Text style={[styles.cardTitle, { fontSize: 14, marginBottom: 8 }]}>+ Add New Personal Record</Text>
-                
-                <View style={{ zIndex: 9999 }}>
-                  <TextInput 
-                    style={styles.textInput} 
-                    placeholder="Exercise Name..." 
-                    placeholderTextColor="#666" 
-                    value={newPrExName} 
-                    onChangeText={(txt) => { setNewPrExName(txt); setShowPrSuggestions(true); }} 
-                    onFocus={() => setShowPrSuggestions(true)} 
-                  />
-                  {showPrSuggestions && filteredPrSuggestions.length > 0 && (
-                    <View style={styles.suggestionsBox}>
-                      {filteredPrSuggestions.slice(0, 5).map((suggestion) => (
-                        <TouchableOpacity key={suggestion} style={styles.suggestionItem} onPress={() => { setNewPrExName(suggestion); setShowPrSuggestions(false); }}>
-                          <Text style={{ color: THEME.text }}>{suggestion}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-
-                <TextInput 
-                  style={[styles.textInput, { marginTop: 10 }]} 
-                  placeholder="Record Weight (KG, e.g. 100.5)..." 
-                  placeholderTextColor="#666" 
-                  keyboardType="decimal-pad" 
-                  value={newPrWeight} 
-                  onChangeText={setNewPrWeight} 
-                />
-
-                <TouchableOpacity style={[styles.primaryButton, { marginTop: 12, backgroundColor: '#F59E0B' }]} onPress={handleSavePR}>
-                  <Text style={[styles.primaryButtonText, { color: '#000' }]}>Save PR Record</Text>
-                </TouchableOpacity>
+            {prs.length === 0 ? (
+              <View style={styles.card}>
+                <Text style={{ color: THEME.textMuted, textAlign: 'center' }}>No PRs logged yet. Hit a new max today!</Text>
               </View>
-
-              {/* LIST OF SAVED PRs */}
-              <Text style={[styles.inputLabel, { fontSize: 14, marginTop: 12 }]}>Saved Personal Records ({prs.length})</Text>
-              {prs.length === 0 ? (
-                <Text style={[styles.cardMutedText, { textAlign: 'center', marginVertical: 14 }]}>No PRs added yet. Log your heavy lifts above!</Text>
-              ) : (
-                prs.map(pr => (
-                  <View key={pr.id} style={styles.prCardRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: THEME.text, fontWeight: '700', fontSize: 15 }}>{pr.exercise}</Text>
-                      <Text style={{ color: THEME.textMuted, fontSize: 12 }}>Achieved: {pr.date}</Text>
+            ) : (
+              prs.map((pr) => (
+                <View key={pr.id} style={styles.card}>
+                  <View style={styles.rowBetween}>
+                    <View>
+                      <Text style={styles.cardTitle}>{pr.exercise}</Text>
+                      <Text style={styles.cardMutedText}>Logged on {pr.date}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <View style={styles.prWeightBadge}>
-                        <Text style={{ color: '#F59E0B', fontWeight: '900', fontSize: 15 }}>{pr.weight} KG</Text>
-                      </View>
-                      <TouchableOpacity onPress={() => handleDeletePR(pr.id)} style={{ marginLeft: 10, padding: 4 }}>
-                        <Ionicons name="trash-outline" size={18} color={THEME.textMuted} />
+                      <Text style={{ color: THEME.accent, fontSize: 20, fontWeight: '800', marginRight: 12 }}>
+                        {pr.weight} KG
+                      </Text>
+                      <TouchableOpacity onPress={() => handleDeletePR(pr.id)}>
+                        <Ionicons name="trash-outline" size={18} color="#EF4444" />
                       </TouchableOpacity>
                     </View>
                   </View>
-                ))
-              )}
-            </ScrollView>
+                </View>
+              ))
+            )}
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        )}
 
-      {/* SPONTANEOUS EXERCISE PICKER MODAL */}
-      <Modal animationType="fade" transparent visible={spontaneousModalVisible} onRequestClose={() => setSpontaneousModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Exercise to Spontaneous Session</Text>
-              <TouchableOpacity onPress={() => setSpontaneousModalVisible(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={24} color={THEME.text} />
+        {/* --- VIEW 6: HABITS & ADDICTIONS --- */}
+        {currentTab === 'addictions' && (
+          <View>
+            <View style={styles.rowBetween}>
+              <Text style={styles.viewTitle}>Habit Tracker Matrix</Text>
+              <TouchableOpacity style={styles.smallAccentBtn} onPress={() => setAddictionModalVisible(true)}>
+                <Ionicons name="add-sharp" size={18} color="#FFF" />
+                <Text style={styles.smallAccentBtnText}>New Tracker</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={{ zIndex: 9999 }}>
-              <TextInput 
-                style={styles.textInput} 
-                placeholder="Exercise Name..." 
-                placeholderTextColor="#666" 
-                value={spontaneousExInput} 
-                onChangeText={(txt) => { setSpontaneousExInput(txt); setShowSpontaneousSuggestions(true); }} 
-                onFocus={() => setShowSpontaneousSuggestions(true)} 
-              />
-              {showSpontaneousSuggestions && filteredSpontaneousSuggestions.length > 0 && (
-                <View style={styles.suggestionsBox}>
-                  {filteredSpontaneousSuggestions.slice(0, 5).map((sug) => (
-                    <TouchableOpacity key={sug} style={styles.suggestionItem} onPress={() => { setSpontaneousExInput(sug); setShowSpontaneousSuggestions(false); }}>
-                      <Text style={{ color: THEME.text }}>{sug}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-
-            <Text style={styles.inputLabel}>Sets Target</Text>
-            <TextInput 
-              style={styles.textInput} 
-              placeholder="3" 
-              placeholderTextColor="#666" 
-              keyboardType="numeric" 
-              value={spontaneousSetsInput} 
-              onChangeText={setSpontaneousSetsInput} 
-            />
-
-            <TouchableOpacity style={[styles.primaryButton, { marginTop: 16 }]} onPress={handleAddSpontaneousExercise}>
-              <Text style={styles.primaryButtonText}>Add to Spontaneous Session</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ROUTINE BLUEPRINT CREATOR / EDITOR MODAL */}
-      <Modal animationType="slide" transparent visible={routineModalVisible} onRequestClose={handleCloseRoutineModal}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingRoutineId ? 'Modify Plan Blueprint' : 'New Workout Blueprint'}</Text>
-              <TouchableOpacity onPress={handleCloseRoutineModal} style={{ padding: 4 }}>
-                <Ionicons name="close" size={24} color={THEME.text} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <Text style={styles.inputLabel}>Routine Identification Name</Text>
-              <TextInput style={styles.textInput} placeholder="e.g. Legs" placeholderTextColor="#666" value={newRoutineName} onChangeText={setNewRoutineName} />
-              <Text style={styles.inputLabel}>Theme Display Color Map Tag</Text>
-              <View style={[styles.row, { justifyContent: 'space-around', marginVertical: 10 }]}>
-                {Object.keys(ROUTINE_COLORS).map((colorKey) => (
-                  <TouchableOpacity key={colorKey} style={[styles.colorSelectorCircle, { backgroundColor: ROUTINE_COLORS[colorKey] }, newRoutineColor === colorKey && styles.colorSelectorCircleSelected]} onPress={() => setNewRoutineColor(colorKey)} />
-                ))}
-              </View>
-
-              <Text style={styles.inputLabel}>Append Component Exercises</Text>
-              <View style={{ zIndex: 999 }}>
-                <View style={styles.row}>
-                  <View style={{ flex: 2, marginRight: 8 }}>
-                    <TextInput style={styles.textInput} placeholder="Search exercise..." placeholderTextColor="#666" value={exInput} onChangeText={(txt) => { setExInput(txt); setShowSuggestions(true); }} onFocus={() => setShowSuggestions(true)} />
-                  </View>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <TextInput style={styles.textInput} placeholder="Sets" placeholderTextColor="#666" keyboardType="numeric" value={exSetsInput} onChangeText={setExSetsInput} />
-                  </View>
-                  <TouchableOpacity style={styles.inlineAddBtn} onPress={handleAddExerciseToCreator}>
-                    <Ionicons name="add" size={24} color={THEME.text} />
-                  </TouchableOpacity>
-                </View>
-                {showSuggestions && filteredSuggestions.length > 0 && (
-                  <View style={styles.suggestionsBox}>
-                    {filteredSuggestions.slice(0, 5).map((suggestion) => (
-                      <TouchableOpacity key={suggestion} style={styles.suggestionItem} onPress={() => { setExInput(suggestion); setShowSuggestions(false); }}>
-                        <Text style={{ color: THEME.text }}>{suggestion}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-
-              {/* EDITABLE & REORDERABLE EXERCISE LIST */}
-              <View style={{ marginTop: 14 }}>
-                {newRoutineExercises.map((ex, index) => (
-                  <View key={ex.id || index} style={styles.reorderableExRow}>
-                    <View style={{ flexDirection: 'column', marginRight: 8 }}>
-                      <TouchableOpacity 
-                        onPress={() => handleMoveExerciseInCreator(index, -1)} 
-                        disabled={index === 0}
-                        style={{ opacity: index === 0 ? 0.3 : 1, padding: 2 }}
-                      >
-                        <Ionicons name="chevron-up" size={18} color={THEME.text} />
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        onPress={() => handleMoveExerciseInCreator(index, 1)} 
-                        disabled={index === newRoutineExercises.length - 1}
-                        style={{ opacity: index === newRoutineExercises.length - 1 ? 0.3 : 1, padding: 2 }}
-                      >
-                        <Ionicons name="chevron-down" size={18} color={THEME.text} />
-                      </TouchableOpacity>
+            {addictions.map(tracker => {
+              const isCleanToday = !!tracker.history[getLocalDateString()];
+              const cleanDaysCount = Object.keys(tracker.history).length;
+              return (
+                <View key={tracker.id} style={[styles.card, { borderLeftWidth: 5, borderLeftColor: tracker.color }]}>
+                  <View style={styles.rowBetween}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle}>{tracker.name}</Text>
+                      <Text style={styles.cardMutedText}>Streak Volume: {cleanDaysCount} Days Completed</Text>
                     </View>
-
-                    <Text style={{ color: THEME.text, fontWeight: '600', flex: 1, fontSize: 13 }}>{index + 1}. {ex.name}</Text>
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
-                      <Text style={{ color: THEME.textMuted, fontSize: 12, marginRight: 4 }}>Sets:</Text>
-                      <TextInput 
-                        style={styles.setsInputInline}
-                        keyboardType="numeric"
-                        value={String(ex.defaultSets)}
-                        onChangeText={(txt) => handleUpdateExerciseSetsInCreator(index, txt)}
-                      />
-                    </View>
-
-                    <TouchableOpacity onPress={() => setNewRoutineExercises(newRoutineExercises.filter((_, i) => i !== index))}>
+                    <TouchableOpacity onPress={() => handleDeleteAddiction(tracker.id)}>
                       <Ionicons name="trash-outline" size={18} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
-                ))}
-              </View>
 
-              <TouchableOpacity style={[styles.primaryButton, { marginTop: 24 }]} onPress={handleCreateOrUpdateRoutine}>
-                <Text style={styles.primaryButtonText}>Compile Blueprint Routine</Text>
-              </TouchableOpacity>
-            </ScrollView>
+                  <TouchableOpacity 
+                    style={[
+                      styles.cleanDayBtn, 
+                      isCleanToday ? { backgroundColor: tracker.color } : { backgroundColor: THEME.surfaceLight }
+                    ]}
+                    onPress={() => handleToggleCleanDay(tracker.id)}
+                  >
+                    <Ionicons 
+                      name={isCleanToday ? "checkmark-circle" : "ellipse-outline"} 
+                      size={20} 
+                      color={THEME.text} 
+                      style={{ marginRight: 8 }} 
+                    />
+                    <Text style={{ color: THEME.text, fontWeight: '700' }}>
+                      {isCleanToday ? "Completed Today!" : "Mark Completed Today"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        )}
 
-      {/* SCHEDULER MODAL */}
-      <Modal animationType="fade" transparent visible={schedulerModalVisible} onRequestClose={() => setSchedulerModalVisible(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Link Assignment to {selectedScheduleDay}</Text>
-              <TouchableOpacity onPress={() => setSchedulerModalVisible(false)} style={{ padding: 4 }}><Ionicons name="close" size={24} color={THEME.text} /></TouchableOpacity>
+      </ScrollView>
+
+      {/* --- MODAL 1: ROUTINE BLUEPRINT CREATOR / EDITOR --- */}
+      <Modal visible={routineModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>{editingRoutineId ? 'Edit Routine' : 'Create Routine'}</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Routine Name (e.g., Heavy Push)"
+              placeholderTextColor="#666"
+              value={newRoutineName}
+              onChangeText={setNewRoutineName}
+            />
+
+            <Text style={styles.inputLabel}>Accent Theme Color:</Text>
+            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+              {Object.keys(ROUTINE_COLORS).map(cName => (
+                <TouchableOpacity 
+                  key={cName} 
+                  style={[
+                    styles.colorDot, 
+                    { backgroundColor: ROUTINE_COLORS[cName] },
+                    newRoutineColor === cName && styles.colorDotSelected
+                  ]}
+                  onPress={() => setNewRoutineColor(cName)}
+                />
+              ))}
             </View>
-            <ScrollView>
-              <TouchableOpacity style={[styles.scheduleRow, { backgroundColor: THEME.surfaceLight }]} onPress={() => handleAssignSchedule(null)}>
-                <Text style={{ color: THEME.textMuted, fontWeight: '600' }}>Clear Track Mappings</Text>
+
+            <Text style={styles.inputLabel}>Add Exercise & Sets:</Text>
+            <View style={{ flexDirection: 'row', marginBottom: 8 }}>
+              <TextInput
+                style={[styles.input, { flex: 2, marginRight: 8 }]}
+                placeholder="Exercise Name"
+                placeholderTextColor="#666"
+                value={exInput}
+                onChangeText={(val) => { setExInput(val); setShowSuggestions(true); }}
+              />
+              <TextInput
+                style={[styles.input, { flex: 1, marginRight: 8 }]}
+                placeholder="Sets"
+                placeholderTextColor="#666"
+                keyboardType="numeric"
+                value={exSetsInput}
+                onChangeText={setExSetsInput}
+              />
+              <TouchableOpacity style={styles.addExBtn} onPress={handleAddExerciseToCreator}>
+                <Ionicons name="add" size={24} color="#FFF" />
               </TouchableOpacity>
-              {routines.map(r => (
-                <TouchableOpacity key={r.id} style={[styles.scheduleRow, { borderLeftWidth: 4, borderLeftColor: r.color }]} onPress={() => handleAssignSchedule(r.id)}>
-                  <Text style={{ color: THEME.text, fontWeight: '600' }}>{r.name}</Text>
-                </TouchableOpacity>
+            </View>
+
+            {showSuggestions && filteredSuggestions.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                <ScrollView style={{ maxHeight: 120 }}>
+                  {filteredSuggestions.map((item, idx) => (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={styles.suggestionItem} 
+                      onPress={() => {
+                        setExInput(item);
+                        setShowSuggestions(false);
+                      }}
+                    >
+                      <Text style={{ color: THEME.text, fontSize: 13 }}>{item}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <ScrollView style={{ maxHeight: 180, marginVertical: 10 }}>
+              {newRoutineExercises.map((ex, idx) => (
+                <View key={ex.id || idx} style={styles.exCreatorItem}>
+                  <Text style={{ color: THEME.text, flex: 1 }}>{ex.name} ({ex.defaultSets} sets)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TouchableOpacity onPress={() => handleMoveExerciseInCreator(idx, -1)} style={{ padding: 4 }}>
+                      <Ionicons name="chevron-up" size={18} color={THEME.textMuted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleMoveExerciseInCreator(idx, 1)} style={{ padding: 4, marginRight: 8 }}>
+                      <Ionicons name="chevron-down" size={18} color={THEME.textMuted} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setNewRoutineExercises(newRoutineExercises.filter((_, i) => i !== idx))}>
+                      <Ionicons name="close-circle" size={20} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
               ))}
             </ScrollView>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight }]} onPress={handleCloseRoutineModal}>
+                <Text style={{ color: THEME.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.accent, marginLeft: 8 }]} onPress={handleCreateOrUpdateRoutine}>
+                <Text style={{ color: THEME.text, fontWeight: '700' }}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
-      {/* HISTORY INSPECTOR MODAL */}
-      <Modal animationType="slide" transparent visible={historyModalVisible} onRequestClose={() => setHistoryModalVisible(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>Historical Performance Log</Text>
-                <Text style={{ color: THEME.textMuted, fontSize: 13 }}>{selectedHistoryDate}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} style={{ padding: 4 }}><Ionicons name="close" size={24} color={THEME.text} /></TouchableOpacity>
-            </View>
-            <ScrollView>
-              {selectedHistoryDate && history[selectedHistoryDate] ? (
-                <View>
-                  <View style={[styles.badge, { backgroundColor: history[selectedHistoryDate].color || THEME.accent, alignSelf: 'flex-start', marginBottom: 16 }]}>
-                    <Text style={{ color: '#121212', fontWeight: '800' }}>{history[selectedHistoryDate].routineName}</Text>
-                  </View>
-                  {history[selectedHistoryDate].exercises.map((ex, eIdx) => (
-                    <View key={eIdx} style={{ marginBottom: 16, borderBottomWidth: 1, borderColor: THEME.border, paddingBottom: 12 }}>
-                      <Text style={{ color: THEME.text, fontSize: 16, fontWeight: '600', marginBottom: 6 }}>{ex.name}</Text>
-                      {ex.sets.map((set, sIdx) => (
-                        <Text key={sIdx} style={{ color: THEME.textMuted, fontSize: 14 }}>Set {sIdx + 1}: {set.weight} kg × {set.reps} reps</Text>
-                      ))}
-                    </View>
+      {/* --- MODAL 2: SPONTANEOUS EXERCISE ADDER --- */}
+      <Modal visible={spontaneousModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Add Spontaneous Exercise</Text>
+
+            <Text style={styles.inputLabel}>Search or Type Exercise:</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Bench Press"
+              placeholderTextColor="#666"
+              value={spontaneousExInput}
+              onChangeText={(val) => {
+                setSpontaneousExInput(val);
+                setShowSpontaneousSuggestions(true);
+              }}
+            />
+
+            {showSpontaneousSuggestions && filteredSpontaneousSuggestions.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                <ScrollView style={{ maxHeight: 120 }}>
+                  {filteredSpontaneousSuggestions.map((item, idx) => (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={styles.suggestionItem} 
+                      onPress={() => {
+                        setSpontaneousExInput(item);
+                        setShowSpontaneousSuggestions(false);
+                      }}
+                    >
+                      <Text style={{ color: THEME.text, fontSize: 13 }}>{item}</Text>
+                    </TouchableOpacity>
                   ))}
-                </View>
-              ) : <Text style={{ color: THEME.textMuted }}>No record saved for this date.</Text>}
-            </ScrollView>
+                </ScrollView>
+              </View>
+            )}
+
+            <Text style={styles.inputLabel}>Default Sets Count:</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="3"
+              placeholderTextColor="#666"
+              keyboardType="numeric"
+              value={spontaneousSetsInput}
+              onChangeText={setSpontaneousSetsInput}
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 }}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight }]} onPress={() => setSpontaneousModalVisible(false)}>
+                <Text style={{ color: THEME.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.accent, marginLeft: 8 }]} onPress={handleAddSpontaneousExercise}>
+                <Text style={{ color: THEME.text, fontWeight: '700' }}>Add Exercise</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
-      {/* ADDICTIONS GENERATOR MODAL */}
-      <Modal animationType="slide" transparent visible={addictionModalVisible} onRequestClose={() => setAddictionModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBackdrop}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Launch Sobriety Clean Tracker</Text>
-              <TouchableOpacity onPress={() => setAddictionModalVisible(false)} style={{ padding: 4 }}><Ionicons name="close" size={24} color={THEME.text} /></TouchableOpacity>
-            </View>
-            <ScrollView>
-              <Text style={styles.inputLabel}>Tracker Focus Goal Name</Text>
-              <TextInput style={styles.textInput} placeholder="e.g. Alcohol" placeholderTextColor="#666" value={newAddictionName} onChangeText={setNewAddictionName} />
-              <Text style={styles.inputLabel}>Grid Matrix Color Tag Identity</Text>
-              <View style={[styles.row, { justifyContent: 'space-around', marginVertical: 14 }]}>
-                {Object.keys(ROUTINE_COLORS).map((colorKey) => (
-                  <TouchableOpacity key={colorKey} style={[styles.colorSelectorCircle, { backgroundColor: ROUTINE_COLORS[colorKey] }, newAddictionColor === colorKey && styles.colorSelectorCircleSelected]} onPress={() => setNewAddictionColor(colorKey)} />
-                ))}
+      {/* --- MODAL 3: PR CREATOR --- */}
+      <Modal visible={prModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Record Personal Record</Text>
+
+            <Text style={styles.inputLabel}>Exercise Name:</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Back Squat"
+              placeholderTextColor="#666"
+              value={newPrExName}
+              onChangeText={(val) => {
+                setNewPrExName(val);
+                setShowPrSuggestions(true);
+              }}
+            />
+
+            {showPrSuggestions && filteredPrSuggestions.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                <ScrollView style={{ maxHeight: 120 }}>
+                  {filteredPrSuggestions.map((item, idx) => (
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={styles.suggestionItem} 
+                      onPress={() => {
+                        setNewPrExName(item);
+                        setShowPrSuggestions(false);
+                      }}
+                    >
+                      <Text style={{ color: THEME.text, fontSize: 13 }}>{item}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
               </View>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleCreateAddiction}><Text style={styles.primaryButtonText}>Initialize Clean Track Grid</Text></TouchableOpacity>
-            </ScrollView>
+            )}
+
+            <Text style={styles.inputLabel}>Max Weight (KG):</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. 140"
+              placeholderTextColor="#666"
+              keyboardType="decimal-pad"
+              value={newPrWeight}
+              onChangeText={setNewPrWeight}
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 }}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight }]} onPress={() => setPrModalVisible(false)}>
+                <Text style={{ color: THEME.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.accent, marginLeft: 8 }]} onPress={() => { handleSavePR(); setPrModalVisible(false); }}>
+                <Text style={{ color: THEME.text, fontWeight: '700' }}>Save PR</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
-      {/* BOTTOM NAVIGATION */}
+      {/* --- MODAL 4: WEEKLY SCHEDULER SELECTION --- */}
+      <Modal visible={schedulerModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Assign Routine for {selectedScheduleDay}</Text>
+
+            <TouchableOpacity style={styles.flexibleRoutineItem} onPress={() => handleAssignSchedule(null)}>
+              <Text style={{ color: '#EF4444', fontWeight: '600' }}>None (Rest / Flexible Day)</Text>
+            </TouchableOpacity>
+
+            {routines.map(r => (
+              <TouchableOpacity key={r.id} style={[styles.flexibleRoutineItem, { borderLeftColor: r.color }]} onPress={() => handleAssignSchedule(r.id)}>
+                <Text style={{ color: THEME.text, fontWeight: '600' }}>{r.name}</Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight, marginTop: 12 }]} onPress={() => setSchedulerModalVisible(false)}>
+              <Text style={{ color: THEME.text, textAlign: 'center' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL 5: HISTORY DETAIL MODAL (FEATURE 3: PROGRESSIVE OVERLOAD DIFFERENTIAL TAGS) --- */}
+      <Modal visible={historyModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '80%' }]}>
+            <Text style={styles.modalTitle}>Details for {selectedHistoryDate}</Text>
+            
+            {selectedHistoryDate && history[selectedHistoryDate] ? (
+              <ScrollView>
+                <Text style={{ color: THEME.accent, fontWeight: '700', fontSize: 16, marginBottom: 12 }}>
+                  {history[selectedHistoryDate].routineName}
+                </Text>
+
+                {history[selectedHistoryDate].exercises?.map((ex, exIdx) => {
+                  const pastSets = getPreviousPerformance(ex.name, selectedHistoryDate);
+
+                  return (
+                    <View key={exIdx} style={{ marginBottom: 16, padding: 10, backgroundColor: THEME.surfaceLight, borderRadius: 8 }}>
+                      <Text style={{ color: THEME.text, fontWeight: '700', marginBottom: 6 }}>{ex.name}</Text>
+
+                      {ex.sets?.map((set, sIdx) => {
+                        let diffTag = null;
+
+                        if (pastSets && pastSets[sIdx]) {
+                          const prevSet = pastSets[sIdx];
+                          const weightDiff = (set.weight || 0) - (prevSet.weight || 0);
+                          const repsDiff = (set.reps || 0) - (prevSet.reps || 0);
+
+                          let diffTexts = [];
+                          if (weightDiff !== 0) {
+                            diffTexts.push(`${weightDiff > 0 ? '+' : ''}${weightDiff} kg`);
+                          }
+                          if (repsDiff !== 0) {
+                            diffTexts.push(`${repsDiff > 0 ? '+' : ''}${repsDiff} reps`);
+                          }
+
+                          if (diffTexts.length > 0) {
+                            const isPositive = weightDiff >= 0 && repsDiff >= 0;
+                            diffTag = (
+                              <View style={[styles.diffTag, { backgroundColor: isPositive ? THEME.successMuted : 'rgba(239, 68, 68, 0.15)' }]}>
+                                <Text style={[styles.diffTagText, { color: isPositive ? THEME.success : '#EF4444' }]}>
+                                  {diffTexts.join(', ')}
+                                </Text>
+                              </View>
+                            );
+                          }
+                        }
+
+                        return (
+                          <View key={sIdx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 2 }}>
+                            <Text style={{ color: THEME.textMuted, fontSize: 13 }}>
+                              Set {sIdx + 1}: {set.weight} KG × {set.reps} reps
+                            </Text>
+                            {diffTag}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <Text style={{ color: THEME.textMuted }}>No workout recorded on this date.</Text>
+            )}
+
+            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight, marginTop: 12 }]} onPress={() => setHistoryModalVisible(false)}>
+              <Text style={{ color: THEME.text, textAlign: 'center' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL 6: ADDICTION TRACKER CREATOR --- */}
+      <Modal visible={addictionModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Create Habit Tracker</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Tracker Name (e.g. No Sugar)"
+              placeholderTextColor="#666"
+              value={newAddictionName}
+              onChangeText={setNewAddictionName}
+            />
+
+            <Text style={styles.inputLabel}>Theme Color:</Text>
+            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+              {Object.keys(ROUTINE_COLORS).map(cName => (
+                <TouchableOpacity 
+                  key={cName} 
+                  style={[
+                    styles.colorDot, 
+                    { backgroundColor: ROUTINE_COLORS[cName] },
+                    newAddictionColor === cName && styles.colorDotSelected
+                  ]}
+                  onPress={() => setNewAddictionColor(cName)}
+                />
+              ))}
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight }]} onPress={() => setAddictionModalVisible(false)}>
+                <Text style={{ color: THEME.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.accent, marginLeft: 8 }]} onPress={handleCreateAddiction}>
+                <Text style={{ color: THEME.text, fontWeight: '700' }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* BOTTOM TAB BAR */}
       <View style={styles.tabBar}>
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('today')}>
-          <Ionicons name="barbell-outline" size={20} color={currentTab === 'today' ? THEME.accent : THEME.textMuted} />
+          <Ionicons name="today" size={20} color={currentTab === 'today' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'today' && styles.tabLabelActive]}>Today</Text>
         </TouchableOpacity>
+
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('routines')}>
-          <Ionicons name="list-outline" size={20} color={currentTab === 'routines' ? THEME.accent : THEME.textMuted} />
+          <Ionicons name="barbell" size={20} color={currentTab === 'routines' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'routines' && styles.tabLabelActive]}>Routines</Text>
         </TouchableOpacity>
+
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('schedule')}>
-          <Ionicons name="calendar-outline" size={20} color={currentTab === 'schedule' ? THEME.accent : THEME.textMuted} />
+          <Ionicons name="calendar" size={20} color={currentTab === 'schedule' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'schedule' && styles.tabLabelActive]}>Schedule</Text>
         </TouchableOpacity>
+
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('history')}>
-          <Ionicons name="analytics-outline" size={20} color={currentTab === 'history' ? THEME.accent : THEME.textMuted} />
+          <Ionicons name="stats-chart" size={20} color={currentTab === 'history' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'history' && styles.tabLabelActive]}>History</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('clean')}>
-          <Ionicons name="shield-checkmark-outline" size={20} color={currentTab === 'clean' ? THEME.accent : THEME.textMuted} />
-          <Text style={[styles.tabLabel, currentTab === 'clean' && styles.tabLabelActive]}>Clean</Text>
+
+        <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('prs')}>
+          <Ionicons name="trophy" size={20} color={currentTab === 'prs' ? THEME.accent : THEME.textMuted} />
+          <Text style={[styles.tabLabel, currentTab === 'prs' && styles.tabLabelActive]}>PRs</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('addictions')}>
+          <Ionicons name="flame" size={20} color={currentTab === 'addictions' ? THEME.accent : THEME.textMuted} />
+          <Text style={[styles.tabLabel, currentTab === 'addictions' && styles.tabLabelActive]}>Habits</Text>
         </TouchableOpacity>
       </View>
+
     </SafeAreaView>
   );
 }
 
-// --- STYLE SHEET LAYOUT ENGINE ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1536,173 +1658,282 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: THEME.border,
-    backgroundColor: THEME.surface,
+    borderBottomColor: THEME.border,
   },
   headerTitle: {
     color: THEME.text,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.5,
+    fontSize: 20,
+    fontWeight: '800',
   },
   headerSubtitle: {
     color: THEME.textMuted,
     fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  lightningBtn: {
+    backgroundColor: THEME.accent,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   scrollContainer: {
-    padding: 20,
-    paddingBottom: 100,
+    padding: 16,
+    paddingBottom: 80,
   },
   viewTitle: {
     color: THEME.text,
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '700',
     marginBottom: 16,
-    letterSpacing: -0.2,
   },
   card: {
     backgroundColor: THEME.surface,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: THEME.border,
   },
   cardTitle: {
     color: THEME.text,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
   },
   cardMutedText: {
     color: THEME.textMuted,
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  rowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   flexibleRoutineItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: THEME.surfaceLight,
-    padding: 14,
-    borderRadius: 10,
-    marginTop: 8,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
     borderLeftWidth: 4,
   },
   clearImpromptuBtn: {
-    marginTop: 12,
-    paddingVertical: 4,
+    marginTop: 10,
     alignSelf: 'flex-start',
   },
-  spontaneousLaunchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: THEME.surfaceLight,
-    borderWidth: 1.5,
-    borderColor: THEME.border,
+  toggleCard: {
+    backgroundColor: THEME.surface,
     borderRadius: 12,
-    paddingVertical: 14,
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  spontaneousLaunchBtnText: {
-    color: THEME.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  addExSpontaneousBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: THEME.surfaceLight,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 8,
-    paddingVertical: 10,
+  },
+  toggleText: {
+    color: THEME.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: THEME.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: THEME.accent,
   },
   completedBannerCard: {
     backgroundColor: THEME.surface,
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 24,
     alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
     borderColor: THEME.success,
-    marginBottom: 14,
   },
   completedBannerTitle: {
     color: THEME.text,
     fontSize: 18,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontWeight: '700',
   },
   completedBannerMuted: {
     color: THEME.textMuted,
     fontSize: 13,
     textAlign: 'center',
     marginTop: 6,
-    lineHeight: 19,
   },
-  toggleCard: {
+  primaryButton: {
+    backgroundColor: THEME.accent,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  smallAccentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.accent,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  smallAccentBtnText: {
+    color: '#FFF',
+    fontWeight: '600',
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  scheduleRowCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: THEME.surface,
-    borderRadius: 14,
-    padding: 16,
-    marginTop: 4,
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: THEME.border,
   },
-  toggleText: {
+  dayText: {
     color: THEME.text,
+    fontWeight: '700',
     fontSize: 15,
-    fontWeight: '600',
   },
-  checkbox: {
-    width: 24,
-    height: 24,
+  assignBtn: {
+    backgroundColor: THEME.surfaceLight,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 6,
+  },
+  heatmapCell: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: THEME.surfaceLight,
+    marginBottom: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: THEME.surface,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  modalTitle: {
+    color: THEME.text,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  inputLabel: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginBottom: 6,
+    marginTop: 6,
+  },
+  input: {
+    backgroundColor: THEME.surfaceLight,
+    color: THEME.text,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  colorDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 10,
+  },
+  colorDotSelected: {
     borderWidth: 2,
-    borderColor: THEME.textMuted,
+    borderColor: '#FFF',
+  },
+  addExBtn: {
+    backgroundColor: THEME.accent,
+    width: 42,
+    height: 42,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  checkboxChecked: {
-    backgroundColor: THEME.accent,
-    borderColor: THEME.accent,
+  suggestionsContainer: {
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  suggestionItem: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  exCreatorItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: THEME.surfaceLight,
+    padding: 10,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  modalBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 6,
   },
   exerciseLogBlock: {
-    backgroundColor: THEME.surfaceLight,
-    borderRadius: 10,
-    padding: 12,
     marginBottom: 16,
   },
   exerciseLogName: {
     color: THEME.text,
-    fontSize: 15,
     fontWeight: '700',
-    marginBottom: 6,
+    fontSize: 14,
+    marginBottom: 8,
   },
   logMetricsRowHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
   },
   columnLabel: {
     color: THEME.textMuted,
     fontSize: 11,
-    fontWeight: '700',
     textAlign: 'center',
+  },
+  rowCompletedHighlight: {
     opacity: 0.6,
   },
   setCheckBtn: {
-    width: 35,
-    height: 32,
+    width: 28,
+    height: 28,
     borderRadius: 6,
-    backgroundColor: THEME.surface,
     borderWidth: 1,
     borderColor: THEME.border,
     justifyContent: 'center',
@@ -1716,314 +1947,117 @@ const styles = StyleSheet.create({
   setCheckText: {
     color: THEME.textMuted,
     fontSize: 12,
-    fontWeight: '700',
-  },
-  rowCompletedHighlight: {
-    opacity: 0.65,
   },
   logInputCompact: {
-    backgroundColor: THEME.surface,
-    borderColor: THEME.border,
-    borderWidth: 1,
-    borderRadius: 6,
+    backgroundColor: THEME.surfaceLight,
     color: THEME.text,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    fontSize: 13,
     textAlign: 'center',
-    fontSize: 14,
-    fontWeight: '700',
-    width: '100%',
   },
   logInputDisabled: {
-    backgroundColor: THEME.successMuted,
-    borderColor: THEME.success,
-    color: THEME.success,
+    backgroundColor: '#222',
+  },
+  timerTriggerBtn: {
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   timerBanner: {
-    backgroundColor: THEME.surfaceLight,
-    borderColor: THEME.accent,
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: THEME.accentMuted,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 16,
   },
   timerBannerText: {
     color: THEME.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  timerCancelBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderRadius: 6,
-  },
-  inlineTimerBtn: {
-    width: 35,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: THEME.surface,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addButtonSmall: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: THEME.accent,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  tagBlock: {
-    backgroundColor: THEME.surfaceLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 6,
-    marginTop: 6,
-  },
-  tagBlockText: {
-    color: THEME.textMuted,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  tagBlockRest: {
-    borderColor: THEME.border,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginTop: 6,
-  },
-  scheduleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: THEME.surface,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  scheduleDayName: {
-    color: THEME.text,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '600',
   },
-  heatmapSquare: {
-    width: 14,
-    height: 14,
-    borderRadius: 3,
-    margin: 2,
-  },
-  badge: {
+  timerCancelBtn: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
   },
-  cleanCheckInBtn: {
+  cleanDayBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 10,
     paddingVertical: 10,
-    marginTop: 14,
-  },
-  prDashboardBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: THEME.surface,
-    borderColor: '#F59E0B',
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingVertical: 12,
-    marginBottom: 14,
-  },
-  prDashboardBtnText: {
-    color: THEME.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  prBadgeCount: {
-    backgroundColor: '#F59E0B',
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    marginLeft: 8,
-  },
-  prCardRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: THEME.surfaceLight,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  prWeightBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#F59E0B',
-  },
-  reorderableExRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: THEME.surfaceLight,
-    padding: 10,
     borderRadius: 8,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: THEME.border,
+    marginTop: 12,
   },
-  setsInputInline: {
-    backgroundColor: THEME.surface,
-    borderColor: THEME.border,
-    borderWidth: 1,
-    borderRadius: 6,
+  // RECOVERY MATRIX STYLES
+  recoveryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  recoveryBadge: {
+    width: '48%',
+    backgroundColor: THEME.surfaceLight,
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  recoveryCategory: {
     color: THEME.text,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    width: 44,
-    textAlign: 'center',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  recoveryStatus: {
+    fontWeight: '700',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  recoveryVolume: {
+    color: THEME.textMuted,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  // DIFFERENTIAL TAG STYLES
+  diffTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  diffTagText: {
+    fontSize: 11,
     fontWeight: '700',
   },
   tabBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: THEME.surface,
+    borderTopWidth: 1,
+    borderTopColor: THEME.border,
+    paddingVertical: 8,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 64,
-    backgroundColor: THEME.surface,
-    borderTopWidth: 1,
-    borderColor: THEME.border,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingBottom: Platform.OS === 'ios' ? 12 : 0,
   },
   tabItem: {
     alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
   },
   tabLabel: {
     color: THEME.textMuted,
     fontSize: 10,
-    fontWeight: '500',
     marginTop: 2,
   },
   tabLabelActive: {
     color: THEME.accent,
     fontWeight: '700',
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: THEME.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '85%',
-    borderWidth: 1,
-    borderColor: THEME.border,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    color: THEME.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  inputLabel: {
-    color: THEME.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 14,
-    marginBottom: 6,
-  },
-  textInput: {
-    backgroundColor: THEME.surfaceLight,
-    borderWidth: 1,
-    borderColor: THEME.border,
-    borderRadius: 8,
-    color: THEME.text,
-    padding: 12,
-    fontSize: 14,
-  },
-  colorSelectorCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  colorSelectorCircleSelected: {
-    borderColor: THEME.text,
-    transform: [{ scale: 1.15 }],
-  },
-  inlineAddBtn: {
-    backgroundColor: THEME.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-  },
-  suggestionsBox: {
-    backgroundColor: THEME.surfaceLight,
-    borderColor: THEME.border,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginTop: 4,
-    position: 'absolute',
-    top: 50,
-    left: 0,
-    right: 0,
-    zIndex: 9999,
-  },
-  suggestionItem: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
-  },
-  primaryButton: {
-    backgroundColor: THEME.accent,
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryButtonText: {
-    color: THEME.text,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
 });
