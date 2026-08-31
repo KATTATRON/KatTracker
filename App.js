@@ -1298,7 +1298,7 @@ export default function App() {
                 </View>
                 <TextInput
                   style={styles.picSetsInput}
-                  placeholder="3"
+                  placeholder="2"
                   placeholderTextColor="#666"
                   keyboardType="numeric"
                   value={exSetsInput}
