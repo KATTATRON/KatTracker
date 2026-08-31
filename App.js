@@ -41,7 +41,6 @@ const ROUTINE_COLORS = {
 // FULL 75-EXERCISE DICTIONARY WITH CATEGORY TAGS
 const EXERCISE_DICTIONARY = [
   // CHEST
-  { name: 'Pull-ups (Bodyweight / Weighted)', category: 'Pull' },
   { name: 'Chin-ups (Bodyweight / Weighted)', category: 'Pull' },
   { name: 'Dips (Chest Focus)', category: 'Chest' },
   { name: 'Dips (Triceps Focus)', category: 'Triceps' },
@@ -57,6 +56,7 @@ const EXERCISE_DICTIONARY = [
   { name: 'Hammer Strength Chest Press', category: 'Chest' },
   // BACK
   { name: 'Lat Pulldown (Wide Grip)', category: 'Back' },
+  { name: 'Lat Pullovers', category: 'Back' },
   { name: 'Barbell Rows', category: 'Back' },
   { name: 'One-Arm Dumbbell Rows', category: 'Back' },
   { name: 'Seated Cable Rows (Close Grip)', category: 'Back' },
@@ -67,11 +67,14 @@ const EXERCISE_DICTIONARY = [
   { name: 'Rack Pulls', category: 'Back' },
   { name: 'Straight-Arm Cable Pulldowns', category: 'Back' },
   { name: 'Seated Row (Wide Grip)', category: 'Back' },
+   { name: 'Machine Row Flared elbows', category: 'Back' },
+   { name: 'Seated Machine Row Close Grip', category: 'Back' },
+  { name: 'Pull-ups (Bodyweight / Weighted)', category: 'Pull' },
   // SHOULDERS
   { name: 'Overhead Press (Barbell)', category: 'Shoulders' },
   { name: 'Seated Dumbbell Shoulder Press', category: 'Shoulders' },
   { name: 'Lateral Raises (Dumbbell)', category: 'Shoulders' },
-  { name: 'Cable Lateral Raises', category: 'Shoulders' },
+   { name: 'Lateral Raises (Cable)', category: 'Shoulders' },
   { name: 'Front Raises (Dumbbell / Cable)', category: 'Shoulders' },
   { name: 'Rear Delt Flys (Pec Deck)', category: 'Shoulders' },
   { name: 'Arnold Press', category: 'Shoulders' },
@@ -90,9 +93,11 @@ const EXERCISE_DICTIONARY = [
   { name: 'Spider Curls', category: 'Biceps' },
   { name: 'Bayesian Curls', category: 'Biceps' },
   { name: 'Zottman Curls', category: 'Biceps' },
+  { name: 'Preacher Curls', category: 'Biceps' },
   // TRICEPS
   { name: 'Overhead Tricep Extension (Dumbbell)', category: 'Triceps' },
   { name: 'Tricep Rope Pushdowns', category: 'Triceps' },
+  { name: 'Single arm Tricep pushdowns', category: 'Triceps' },
   { name: 'Skull Crushers (EZ Bar)', category: 'Triceps' },
   { name: 'Close-Grip Bench Press', category: 'Triceps' },
   { name: 'Diamond Push-ups', category: 'Triceps' },
@@ -100,6 +105,7 @@ const EXERCISE_DICTIONARY = [
   { name: 'Tricep Dumbbell Kickbacks', category: 'Triceps' },
   { name: 'Bench Dips', category: 'Triceps' },
   { name: 'Machine Tricep Pressdown', category: 'Triceps' },
+  { name: 'Machine Dips', category: 'Triceps' },
   // LEGS
   { name: 'Back Squat (Barbell)', category: 'Legs' },
   { name: 'Leg Press', category: 'Legs' },
@@ -407,7 +413,7 @@ export default function App() {
     setNewRoutineExercises([]);
     setEditingRoutineId(null);
     setExInput('');
-    setExSetsInput('3');
+    setExSetsInput('2');
     setRoutineModalVisible(false);
   };
 
