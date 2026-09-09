@@ -1025,13 +1025,20 @@ export default function App() {
     setShowSuppSuggestions(false);
   };
 
+  const parseDoseMg = (raw) => {
+    if (raw == null) return NaN;
+    const normalized = String(raw).trim().replace(/\s/g, '').replace(',', '.');
+    if (!normalized) return NaN;
+    return parseFloat(normalized);
+  };
+
   const handleSaveSupplement = () => {
     const name = suppNameInput.trim();
     if (!name) return Alert.alert('Invalid Input', 'Enter a supplement name.');
 
-    const doseMg = parseFloat(suppDoseInput);
+    const doseMg = parseDoseMg(suppDoseInput);
     if (Number.isNaN(doseMg) || doseMg < 0) {
-      return Alert.alert('Invalid Input', 'Enter a dose in mg.');
+      return Alert.alert('Invalid Input', 'Enter a dose in mg (e.g. 0,025 or 0.025).');
     }
 
     let updated;
@@ -1091,13 +1098,15 @@ export default function App() {
   };
 
   const formatSuppDose = (doseMg) => {
-    if (doseMg == null) return '';
+    if (doseMg == null || Number.isNaN(doseMg)) return '';
     if (doseMg > 0 && doseMg < 1) {
-      const ug = Math.round(doseMg * 1000);
-      return `${ug}µg`;
+      const ug = doseMg * 1000;
+      const ugText = Number.isInteger(ug) ? String(ug) : String(Math.round(ug * 1000) / 1000);
+      return `${ugText}µg`;
     }
     const n = Number(doseMg);
-    return `${Number.isInteger(n) ? n : n}mg`;
+    const text = Number.isInteger(n) ? String(n) : String(n).replace('.', ',');
+    return `${text}mg`;
   };
 
   const filteredSuggestions = useMemo(() => {
@@ -1795,11 +1804,21 @@ export default function App() {
             <Text style={styles.inputLabel}>Dose (mg):</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. 5000"
+              placeholder="e.g. 5000 or 0,025"
               placeholderTextColor="#666"
               keyboardType="decimal-pad"
               value={suppDoseInput}
-              onChangeText={setSuppDoseInput}
+              onChangeText={(val) => {
+                // Allow digits, one decimal separator ("," or "."), and optional leading zeros
+                const cleaned = val.replace(/[^\d.,]/g, '');
+                const parts = cleaned.split(/[.,]/);
+                if (parts.length <= 1) {
+                  setSuppDoseInput(cleaned);
+                  return;
+                }
+                const sep = cleaned.includes(',') ? ',' : '.';
+                setSuppDoseInput(`${parts[0]}${sep}${parts.slice(1).join('')}`);
+              }}
             />
 
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
