@@ -274,8 +274,13 @@ const STORAGE_KEYS = {
   PRS: '@kat_tracker_prs_v3',
   RECOVERY_WINDOWS: '@kat_tracker_recovery_windows_v1',
   SUPPLEMENTS: '@kat_tracker_supplements_v1',
-  SUPPLEMENT_LOG: '@kat_tracker_supplement_log_v1'
+  SUPPLEMENT_LOG: '@kat_tracker_supplement_log_v1',
+  SLEEP_LOG: '@kat_tracker_sleep_log_v1',
+  WEIGHT_LOG: '@kat_tracker_weight_log_v1'
 };
+
+const SLEEP_TARGET_HOURS = 8;
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // --- UTILITY FUNCTIONS ---
 const getLocalDateString = (date = new Date()) => {
@@ -287,6 +292,60 @@ const getLocalDateString = (date = new Date()) => {
 const getTodayDayName = () => {
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   return days[new Date().getDay()];
+};
+
+const parseTimeToMinutes = (raw) => {
+  if (!raw || !String(raw).trim()) return null;
+  const cleaned = String(raw).trim().replace('.', ':').replace(',', ':');
+  const match = cleaned.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (!match) return null;
+  const h = parseInt(match[1], 10);
+  const m = parseInt(match[2], 10);
+  if (Number.isNaN(h) || Number.isNaN(m) || h > 23 || m > 59) return null;
+  return h * 60 + m;
+};
+
+const formatMinutesAsTime = (totalMins) => {
+  if (totalMins == null || Number.isNaN(totalMins)) return '--:--';
+  let mins = Math.round(totalMins) % (24 * 60);
+  if (mins < 0) mins += 24 * 60;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+};
+
+const formatDurationHours = (hours) => {
+  if (hours == null || Number.isNaN(hours)) return '--';
+  const totalMins = Math.round(hours * 60);
+  const h = Math.floor(totalMins / 60);
+  const m = Math.abs(totalMins % 60);
+  return `${h}h ${String(m).padStart(2, '0')}m`;
+};
+
+const calcSleepHours = (bedMin, wakeMin) => {
+  if (bedMin == null || wakeMin == null) return null;
+  let diff = wakeMin - bedMin;
+  if (diff <= 0) diff += 24 * 60;
+  return diff / 60;
+};
+
+const getLastNDateStrings = (n = 7) => {
+  const dates = [];
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  for (let i = n - 1; i >= 0; i -= 1) {
+    const copy = new Date(d);
+    copy.setDate(d.getDate() - i);
+    dates.push(getLocalDateString(copy));
+  }
+  return dates;
+};
+
+const sleepBarColor = (hours) => {
+  if (hours == null) return '#2C2C38';
+  if (hours >= SLEEP_TARGET_HOURS) return '#F59E0B';
+  if (hours >= 6) return '#F97316';
+  return '#EF4444';
 };
 
 const generateHeatmapDates = () => {
@@ -510,6 +569,12 @@ export default function App() {
   const [suppDoseInput, setSuppDoseInput] = useState('');
   const [showSuppSuggestions, setShowSuppSuggestions] = useState(false);
 
+  const [sleepLog, setSleepLog] = useState({}); // { date: { bed: '23:30', wake: '07:00' } }
+  const [weightLog, setWeightLog] = useState({}); // { date: number }
+  const [sleepBedInput, setSleepBedInput] = useState('');
+  const [sleepWakeInput, setSleepWakeInput] = useState('');
+  const [weightInput, setWeightInput] = useState('');
+
   // Rest timer
   useEffect(() => {
     if (!timerActive) return undefined;
@@ -548,6 +613,8 @@ export default function App() {
       const storedRecoveryWindows = await AsyncStorage.getItem(STORAGE_KEYS.RECOVERY_WINDOWS);
       const storedSupplements = await AsyncStorage.getItem(STORAGE_KEYS.SUPPLEMENTS);
       const storedSupplementLog = await AsyncStorage.getItem(STORAGE_KEYS.SUPPLEMENT_LOG);
+      const storedSleepLog = await AsyncStorage.getItem(STORAGE_KEYS.SLEEP_LOG);
+      const storedWeightLog = await AsyncStorage.getItem(STORAGE_KEYS.WEIGHT_LOG);
 
       if (storedRoutines) setRoutines(JSON.parse(storedRoutines));
       if (storedSchedule) setSchedule(JSON.parse(storedSchedule));
@@ -560,6 +627,21 @@ export default function App() {
       }
       if (storedSupplements) setSupplements(JSON.parse(storedSupplements));
       if (storedSupplementLog) setSupplementLog(JSON.parse(storedSupplementLog));
+      if (storedSleepLog) {
+        const parsedSleep = JSON.parse(storedSleepLog);
+        setSleepLog(parsedSleep);
+        const todaySleep = parsedSleep[getLocalDateString()];
+        if (todaySleep) {
+          setSleepBedInput(todaySleep.bed || '');
+          setSleepWakeInput(todaySleep.wake || '');
+        }
+      }
+      if (storedWeightLog) {
+        const parsedWeight = JSON.parse(storedWeightLog);
+        setWeightLog(parsedWeight);
+        const todayWeight = parsedWeight[getLocalDateString()];
+        if (todayWeight != null) setWeightInput(String(todayWeight).replace('.', ','));
+      }
     } catch (e) {
       Alert.alert('Error', 'Could not load your saved data.');
     } finally {
@@ -674,6 +756,74 @@ export default function App() {
       };
     });
   }, [history]);
+
+  const sleepStats = useMemo(() => {
+    const dates = getLastNDateStrings(7);
+    const nights = dates.map((dateStr) => {
+      const entry = sleepLog[dateStr];
+      const bedMin = entry ? parseTimeToMinutes(entry.bed) : null;
+      const wakeMin = entry ? parseTimeToMinutes(entry.wake) : null;
+      const hours = calcSleepHours(bedMin, wakeMin);
+      const day = new Date(`${dateStr}T12:00:00`);
+      return {
+        dateStr,
+        label: DAY_SHORT[day.getDay()],
+        bedMin,
+        wakeMin,
+        hours,
+        color: sleepBarColor(hours)
+      };
+    });
+
+    const logged = nights.filter(n => n.hours != null);
+    const avgHours = logged.length
+      ? logged.reduce((sum, n) => sum + n.hours, 0) / logged.length
+      : null;
+    const avgBed = logged.length
+      ? logged.reduce((sum, n) => sum + n.bedMin, 0) / logged.length
+      : null;
+    const avgWake = logged.length
+      ? logged.reduce((sum, n) => sum + n.wakeMin, 0) / logged.length
+      : null;
+    const onTarget = logged.filter(n => n.hours >= SLEEP_TARGET_HOURS).length;
+    const sleepDebtHours = logged.reduce((sum, n) => sum + (n.hours - SLEEP_TARGET_HOURS), 0);
+    const longest = logged.length ? Math.max(...logged.map(n => n.hours)) : null;
+    const lastLogged = [...nights].reverse().find(n => n.hours != null) || null;
+
+    return {
+      nights,
+      avgHours,
+      avgBed,
+      avgWake,
+      onTarget,
+      loggedCount: logged.length,
+      sleepDebtHours,
+      longest,
+      lastLogged
+    };
+  }, [sleepLog]);
+
+  const weightStats = useMemo(() => {
+    const dates = getLastNDateStrings(7);
+    const points = dates.map((dateStr) => {
+      const value = weightLog[dateStr];
+      const day = new Date(`${dateStr}T12:00:00`);
+      return {
+        dateStr,
+        label: DAY_SHORT[day.getDay()],
+        value: value != null ? Number(value) : null
+      };
+    });
+    const logged = points.filter(p => p.value != null);
+    const latest = logged.length ? logged[logged.length - 1].value : null;
+    const first = logged.length ? logged[0].value : null;
+    const delta = latest != null && first != null ? latest - first : null;
+    const maxVal = logged.length ? Math.max(...logged.map(p => p.value)) : 1;
+    const minVal = logged.length ? Math.min(...logged.map(p => p.value)) : 0;
+    const range = Math.max(1, maxVal - minVal);
+
+    return { points, logged, latest, first, delta, maxVal, minVal, range };
+  }, [weightLog]);
 
   const getPreviousPerformance = useCallback((exerciseName, currentDateStr) => {
     const sortedDates = Object.keys(history)
@@ -1300,6 +1450,38 @@ export default function App() {
     saveData(STORAGE_KEYS.SUPPLEMENT_LOG, updated);
   };
 
+  const handleSaveSleepToday = () => {
+    const bedMin = parseTimeToMinutes(sleepBedInput);
+    const wakeMin = parseTimeToMinutes(sleepWakeInput);
+    if (bedMin == null || wakeMin == null) {
+      return Alert.alert('Invalid Time', 'Use times like 23:30 and 07:00.');
+    }
+    const updated = {
+      ...sleepLog,
+      [todayStr]: {
+        bed: formatMinutesAsTime(bedMin),
+        wake: formatMinutesAsTime(wakeMin)
+      }
+    };
+    setSleepLog(updated);
+    setSleepBedInput(formatMinutesAsTime(bedMin));
+    setSleepWakeInput(formatMinutesAsTime(wakeMin));
+    saveData(STORAGE_KEYS.SLEEP_LOG, updated);
+    Alert.alert('Saved', `Sleep logged: ${formatDurationHours(calcSleepHours(bedMin, wakeMin))}`);
+  };
+
+  const handleSaveWeightToday = () => {
+    const parsed = parseFloat(String(weightInput).trim().replace(',', '.'));
+    if (Number.isNaN(parsed) || parsed <= 0) {
+      return Alert.alert('Invalid Weight', 'Enter a weight like 82,5.');
+    }
+    const updated = { ...weightLog, [todayStr]: parsed };
+    setWeightLog(updated);
+    setWeightInput(String(parsed).replace('.', ','));
+    saveData(STORAGE_KEYS.WEIGHT_LOG, updated);
+    Alert.alert('Saved', `Weight logged: ${parsed} kg`);
+  };
+
   const formatSuppDose = (doseMg) => {
     if (doseMg == null || Number.isNaN(doseMg)) return '';
     if (doseMg > 0 && doseMg < 1) {
@@ -1475,6 +1657,191 @@ export default function App() {
                       <Text style={styles.weeklySetsCount}>{item.count}</Text>
                     </View>
                   ))}
+                </View>
+
+                <View style={styles.healthCard}>
+                  <Text style={styles.healthCardTitle}>Sleep</Text>
+                  <Text style={styles.healthCardHint}>Log bedtime + wake time for today</Text>
+
+                  {sleepStats.lastLogged ? (
+                    <View style={styles.lastNightRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.lastNightLabel}>Last logged</Text>
+                        <Text style={styles.lastNightHours}>{formatDurationHours(sleepStats.lastLogged.hours)}</Text>
+                        <Text style={styles.lastNightRange}>
+                          {formatMinutesAsTime(sleepStats.lastLogged.bedMin)} → {formatMinutesAsTime(sleepStats.lastLogged.wakeMin)}
+                        </Text>
+                      </View>
+                      <Text style={styles.lastNightDate}>{sleepStats.lastLogged.dateStr}</Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.healthInputRow}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.inputLabel}>Go to sleep</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="23:30"
+                        placeholderTextColor="#666"
+                        value={sleepBedInput}
+                        onChangeText={setSleepBedInput}
+                        keyboardType="default"
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Wake up</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="07:00"
+                        placeholderTextColor="#666"
+                        value={sleepWakeInput}
+                        onChangeText={setSleepWakeInput}
+                        keyboardType="default"
+                      />
+                    </View>
+                  </View>
+                  <TouchableOpacity style={[styles.primaryButton, { marginTop: 4 }]} onPress={handleSaveSleepToday}>
+                    <Text style={styles.primaryButtonText}>Save Sleep</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.chartHeaderRow}>
+                    <Text style={styles.chartSectionLabel}>PER NIGHT</Text>
+                    <Text style={styles.chartSectionMeta}>
+                      Average {sleepStats.avgHours != null ? formatDurationHours(sleepStats.avgHours) : '--'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.sleepChartArea}>
+                    <View style={styles.sleepYAxis}>
+                      {[10, 8, 6, 4, 2, 0].map((h) => (
+                        <Text key={h} style={styles.sleepYLabel}>{h}h</Text>
+                      ))}
+                    </View>
+                    <View style={styles.sleepBarsWrap}>
+                      <View style={[styles.sleepTargetLine, { bottom: `${(SLEEP_TARGET_HOURS / 10) * 100}%` }]}>
+                        <View style={styles.sleepTargetDash} />
+                        <Text style={styles.sleepTargetText}>{SLEEP_TARGET_HOURS}h</Text>
+                      </View>
+                      <View style={styles.sleepBarsRow}>
+                        {sleepStats.nights.map((n) => (
+                          <View key={n.dateStr} style={styles.sleepBarCol}>
+                            <View style={styles.sleepBarTrack}>
+                              <View
+                                style={[
+                                  styles.sleepBarFill,
+                                  {
+                                    height: `${Math.max(0, Math.min(100, ((n.hours || 0) / 10) * 100))}%`,
+                                    backgroundColor: n.hours != null ? n.color : 'transparent'
+                                  }
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.sleepBarLabel}>{n.label}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+
+                  <Text style={[styles.chartSectionLabel, { marginTop: 14 }]}>RHYTHM</Text>
+                  <View style={styles.rhythmGrid}>
+                    <View style={styles.rhythmCell}>
+                      <Text style={styles.rhythmLabel}>Average bedtime</Text>
+                      <Text style={styles.rhythmValue}>{formatMinutesAsTime(sleepStats.avgBed)}</Text>
+                    </View>
+                    <View style={styles.rhythmCell}>
+                      <Text style={styles.rhythmLabel}>Average wake-up</Text>
+                      <Text style={styles.rhythmValue}>{formatMinutesAsTime(sleepStats.avgWake)}</Text>
+                    </View>
+                    <View style={styles.rhythmCell}>
+                      <Text style={styles.rhythmLabel}>Nights on target</Text>
+                      <Text style={styles.rhythmValue}>{sleepStats.onTarget}/{sleepStats.loggedCount || 0}</Text>
+                      <Text style={styles.rhythmSub}>{SLEEP_TARGET_HOURS}h or more</Text>
+                    </View>
+                    <View style={styles.rhythmCell}>
+                      <Text style={styles.rhythmLabel}>Longest night</Text>
+                      <Text style={styles.rhythmValue}>
+                        {sleepStats.longest != null ? formatDurationHours(sleepStats.longest) : '--'}
+                      </Text>
+                    </View>
+                    <View style={[styles.rhythmCell, { width: '100%' }]}>
+                      <Text style={styles.rhythmLabel}>Sleep debt (7 days)</Text>
+                      <Text style={[styles.rhythmValue, { color: (sleepStats.sleepDebtHours || 0) < 0 ? '#EF4444' : '#22C55E' }]}>
+                        {sleepStats.loggedCount
+                          ? `${sleepStats.sleepDebtHours > 0 ? '+' : sleepStats.sleepDebtHours < 0 ? '-' : ''}${formatDurationHours(Math.abs(sleepStats.sleepDebtHours))}`
+                          : '--'}
+                      </Text>
+                      <Text style={styles.rhythmSub}>vs {SLEEP_TARGET_HOURS}h / night</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.healthCard}>
+                  <Text style={styles.healthCardTitle}>Weight</Text>
+                  <Text style={styles.healthCardHint}>Log your weight once a day</Text>
+
+                  <View style={styles.rowBetween}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={styles.inputLabel}>Today (kg)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="e.g. 82,5"
+                        placeholderTextColor="#666"
+                        keyboardType="decimal-pad"
+                        value={weightInput}
+                        onChangeText={(val) => {
+                          const cleaned = val.replace(/[^\d.,]/g, '');
+                          const parts = cleaned.split(/[.,]/);
+                          if (parts.length <= 1) {
+                            setWeightInput(cleaned);
+                            return;
+                          }
+                          const sep = cleaned.includes(',') ? ',' : '.';
+                          setWeightInput(`${parts[0]}${sep}${parts.slice(1).join('')}`);
+                        }}
+                      />
+                    </View>
+                    <TouchableOpacity style={[styles.primaryButton, { marginTop: 22, paddingHorizontal: 16 }]} onPress={handleSaveWeightToday}>
+                      <Text style={styles.primaryButtonText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.chartHeaderRow}>
+                    <Text style={styles.chartSectionLabel}>7-DAY TREND</Text>
+                    <Text style={styles.chartSectionMeta}>
+                      {weightStats.latest != null ? `${String(weightStats.latest).replace('.', ',')} kg` : 'No data'}
+                      {weightStats.delta != null
+                        ? ` · ${weightStats.delta > 0 ? '+' : ''}${String(Math.round(weightStats.delta * 10) / 10).replace('.', ',')} kg`
+                        : ''}
+                    </Text>
+                  </View>
+
+                  <View style={styles.weightBarsRow}>
+                    {weightStats.points.map((p) => {
+                      const heightPct = p.value == null
+                        ? 0
+                        : 20 + ((p.value - weightStats.minVal) / weightStats.range) * 80;
+                      return (
+                        <View key={p.dateStr} style={styles.weightBarCol}>
+                          <Text style={styles.weightBarValue}>
+                            {p.value != null ? String(Math.round(p.value * 10) / 10).replace('.', ',') : ''}
+                          </Text>
+                          <View style={styles.weightBarTrack}>
+                            <View
+                              style={[
+                                styles.weightBarFill,
+                                {
+                                  height: `${heightPct}%`,
+                                  backgroundColor: p.value != null ? '#8B5CF6' : 'transparent'
+                                }
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.sleepBarLabel}>{p.label}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                 </View>
 
                 <View style={styles.supplementsCard}>
@@ -2788,6 +3155,192 @@ const styles = StyleSheet.create({
     color: THEME.text,
     fontSize: 14,
     fontWeight: '700',
+  },
+  healthCard: {
+    backgroundColor: '#1D1D26',
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+  },
+  healthCardTitle: {
+    color: THEME.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  healthCardHint: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+    marginBottom: 10,
+  },
+  lastNightRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  lastNightLabel: {
+    color: '#A78BFA',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  lastNightHours: {
+    color: '#F59E0B',
+    fontSize: 28,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  lastNightRange: {
+    color: THEME.text,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  lastNightDate: {
+    color: THEME.textMuted,
+    fontSize: 11,
+  },
+  healthInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  chartHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  chartSectionLabel: {
+    color: '#A78BFA',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+  },
+  chartSectionMeta: {
+    color: THEME.textMuted,
+    fontSize: 12,
+  },
+  sleepChartArea: {
+    flexDirection: 'row',
+    height: 160,
+  },
+  sleepYAxis: {
+    width: 28,
+    justifyContent: 'space-between',
+    paddingBottom: 18,
+  },
+  sleepYLabel: {
+    color: THEME.textMuted,
+    fontSize: 10,
+  },
+  sleepBarsWrap: {
+    flex: 1,
+    position: 'relative',
+  },
+  sleepTargetLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  sleepTargetDash: {
+    flex: 1,
+    borderTopWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#22C55E',
+  },
+  sleepTargetText: {
+    color: '#22C55E',
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  sleepBarsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingBottom: 18,
+  },
+  sleepBarCol: {
+    flex: 1,
+    alignItems: 'center',
+    height: '100%',
+    justifyContent: 'flex-end',
+  },
+  sleepBarTrack: {
+    width: 14,
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'transparent',
+  },
+  sleepBarFill: {
+    width: '100%',
+    borderRadius: 6,
+    minHeight: 2,
+  },
+  sleepBarLabel: {
+    color: THEME.textMuted,
+    fontSize: 10,
+    marginTop: 4,
+  },
+  rhythmGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  rhythmCell: {
+    width: '50%',
+    marginBottom: 12,
+    paddingRight: 8,
+  },
+  rhythmLabel: {
+    color: THEME.textMuted,
+    fontSize: 11,
+  },
+  rhythmValue: {
+    color: THEME.text,
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  rhythmSub: {
+    color: THEME.textMuted,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  weightBarsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 140,
+    marginTop: 4,
+  },
+  weightBarCol: {
+    flex: 1,
+    alignItems: 'center',
+    height: '100%',
+    justifyContent: 'flex-end',
+  },
+  weightBarValue: {
+    color: THEME.textMuted,
+    fontSize: 9,
+    marginBottom: 4,
+    height: 12,
+  },
+  weightBarTrack: {
+    width: 14,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  weightBarFill: {
+    width: '100%',
+    borderRadius: 6,
+    minHeight: 2,
   },
   noteLabel: {
     color: THEME.textMuted,
