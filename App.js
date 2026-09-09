@@ -169,8 +169,98 @@ const EXERCISE_DICTIONARY = [
   { name: 'Cable Woodchoppers', category: 'Core' },
   { name: 'Hanging Knee Raises', category: 'Core' },
   { name: 'Bicycle Crunches', category: 'Core' },
-  { name: 'Bird Dog', category: 'Core' }
+  { name: 'Bird Dog', category: 'Core' },
+
+  // --- User routine variants / aliases (pics) ---
+  { name: 'Incline press', category: 'Chest' },
+  { name: 'Incline Press', category: 'Chest' },
+  { name: 'Chest Press (Machine)', category: 'Chest' },
+  { name: 'Lateral Raises (Machine)', category: 'Shoulders' },
+  { name: 'Reverse Flys', category: 'Shoulders' },
+  { name: 'Seated Machine Row (close Grip)', category: 'Back' },
+  { name: 'Seated Machine Rows (Close Grip)', category: 'Back' },
+  { name: 'Machine Row Flared elbow', category: 'Back' },
+  { name: 'Single arm Tricep pushdown', category: 'Triceps' },
+  { name: 'Precher Curls', category: 'Biceps' },
+  { name: 'Dumbbell Curls', category: 'Biceps' },
+  { name: 'Reverse Easybar Curl', category: 'Biceps' },
+  { name: 'UWU Curls', category: 'Biceps' },
+  { name: 'Single arm UWU curl', category: 'Biceps' },
+  { name: 'Leg Extentions', category: 'Legs' },
+  { name: 'Leg Curl', category: 'Legs' },
+  { name: 'Calf Raises', category: 'Legs' },
+  { name: 'Squat', category: 'Legs' },
+  { name: 'Ab chrunches', category: 'Core' },
+  { name: 'Ab crunches', category: 'Core' }
 ];
+
+const normalizeExerciseKey = (name = '') =>
+  String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const resolveExerciseCategory = (exerciseName) => {
+  if (!exerciseName) return null;
+  const exact = EXERCISE_DICTIONARY.find(
+    d => d.name.toLowerCase() === exerciseName.toLowerCase()
+  );
+  if (exact) return exact.category;
+
+  const key = normalizeExerciseKey(exerciseName);
+  const fuzzy = EXERCISE_DICTIONARY.find(d => normalizeExerciseKey(d.name) === key);
+  if (fuzzy) return fuzzy.category;
+
+  // Extra loose aliases for common typos / short names
+  const ALIASES = {
+    inclinepress: 'Chest',
+    machinechestpress: 'Chest',
+    chestpressmachine: 'Chest',
+    pecdeckflys: 'Chest',
+    latpulldownwidegrip: 'Back',
+    latpullovers: 'Back',
+    tbarrows: 'Back',
+    seatedmachinerowclosegrip: 'Back',
+    seatedmachinerowsclosegrip: 'Back',
+    machinerowflaredelbow: 'Back',
+    machinerowflaredelbows: 'Back',
+    reverseflys: 'Shoulders',
+    lateralraisesmachine: 'Shoulders',
+    lateralraisescable: 'Shoulders',
+    seateddumbbellshoulderpress: 'Shoulders',
+    prechercurls: 'Biceps',
+    preachercurls: 'Biceps',
+    dumbbellcurls: 'Biceps',
+    hammercurls: 'Biceps',
+    reverseeasybarcurl: 'Biceps',
+    uwucurls: 'Biceps',
+    singlearmuwucurl: 'Biceps',
+    cablecurlsropestraightbar: 'Biceps',
+    singlearmtriceppushdown: 'Triceps',
+    singlearmtriceppushdowns: 'Triceps',
+    machinetriceppressdown: 'Triceps',
+    machinedips: 'Triceps',
+    legextensionsmachine: 'Legs',
+    legextentions: 'Legs',
+    seatedlegcurl: 'Legs',
+    legcurl: 'Legs',
+    legpress: 'Legs',
+    standingcalfraises: 'Legs',
+    calfraises: 'Legs',
+    squat: 'Legs',
+    abchrunches: 'Core',
+    abcrunches: 'Core',
+    abdominalcrunches: 'Core'
+  };
+
+  return ALIASES[key] || null;
+};
+
+const getWeekStartDate = (date = new Date()) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const dayOfWeek = d.getDay();
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  d.setDate(d.getDate() - daysToMonday);
+  return d;
+};
 
 const BASE_EXERCISE_POOL = EXERCISE_DICTIONARY.map(e => e.name);
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -512,13 +602,11 @@ export default function App() {
       daySessions.forEach((entry) => {
         const sessionTimestamp = entry.timestamp || 0;
         (entry.exercises || []).forEach((ex) => {
-          const match = EXERCISE_DICTIONARY.find(
-            d => d.name.toLowerCase() === ex.name.toLowerCase()
-          );
-          if (!match || !RECOVERY_CATEGORIES.includes(match.category)) return;
-          const current = latestCategoryTimestamp[match.category];
+          const category = resolveExerciseCategory(ex.name);
+          if (!category || !RECOVERY_CATEGORIES.includes(category)) return;
+          const current = latestCategoryTimestamp[category];
           if (!current || sessionTimestamp > current) {
-            latestCategoryTimestamp[match.category] = sessionTimestamp;
+            latestCategoryTimestamp[category] = sessionTimestamp;
           }
         });
       });
@@ -551,6 +639,44 @@ export default function App() {
       };
     });
   }, [history, recoveryWindows]);
+
+  const weeklySetsMatrix = useMemo(() => {
+    const weekStart = getWeekStartDate();
+    const weekStartStr = getLocalDateString(weekStart);
+    const counts = RECOVERY_CATEGORIES.reduce((acc, item) => {
+      acc[item] = 0;
+      return acc;
+    }, {});
+
+    Object.keys(history).forEach((dateStr) => {
+      if (dateStr < weekStartStr) return;
+      const sessions = getSessionsForDate(history, dateStr);
+      sessions.forEach((entry) => {
+        (entry.exercises || []).forEach((ex) => {
+          const category = resolveExerciseCategory(ex.name);
+          if (!category || !Object.prototype.hasOwnProperty.call(counts, category)) return;
+          counts[category] += Array.isArray(ex.sets) ? ex.sets.length : 0;
+        });
+      });
+    });
+
+    const maxCount = Math.max(1, ...Object.values(counts));
+
+    return RECOVERY_CATEGORIES.map((category) => {
+      const count = counts[category] || 0;
+      const ratio = count / maxCount;
+      let color = '#2C2C38';
+      if (count > 0 && ratio < 0.35) color = '#F59E0B';
+      else if (count > 0) color = '#22C55E';
+
+      return {
+        category,
+        count,
+        barWidth: Math.max(count > 0 ? 0.08 : 0, ratio),
+        color
+      };
+    });
+  }, [history]);
 
   const getPreviousPerformance = useCallback((exerciseName, currentDateStr) => {
     const sortedDates = Object.keys(history)
@@ -1247,6 +1373,29 @@ export default function App() {
                           {item.hoursLeft <= 0 ? '0h left' : `${Math.ceil(item.hoursLeft)}h left`}
                         </Text>
                       </View>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.weeklySetsCard}>
+                  <Text style={styles.weeklySetsTitle}>Weighted sets this week</Text>
+                  <Text style={styles.weeklySetsHint}>Resets every Monday</Text>
+
+                  {weeklySetsMatrix.map((item) => (
+                    <View key={item.category} style={styles.weeklySetsRow}>
+                      <Text style={styles.weeklySetsCategory}>{item.category}</Text>
+                      <View style={styles.weeklySetsBarTrack}>
+                        <View
+                          style={[
+                            styles.weeklySetsBarFill,
+                            {
+                              width: `${item.barWidth * 100}%`,
+                              backgroundColor: item.count > 0 ? item.color : 'transparent'
+                            }
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.weeklySetsCount}>{item.count}</Text>
                     </View>
                   ))}
                 </View>
@@ -2423,6 +2572,55 @@ const styles = StyleSheet.create({
   recoverySettingSuffix: {
     color: THEME.textMuted,
     width: 12,
+  },
+  weeklySetsCard: {
+    backgroundColor: '#1D1D26',
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+  },
+  weeklySetsTitle: {
+    color: THEME.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  weeklySetsHint: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+    marginBottom: 4,
+  },
+  weeklySetsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  weeklySetsCategory: {
+    width: 82,
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  weeklySetsBarTrack: {
+    flex: 1,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#2C2C38',
+    overflow: 'hidden',
+    marginHorizontal: 10,
+  },
+  weeklySetsBarFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  weeklySetsCount: {
+    width: 28,
+    textAlign: 'right',
+    color: THEME.text,
+    fontSize: 14,
+    fontWeight: '700',
   },
   supplementsCard: {
     backgroundColor: '#1D1D26',
