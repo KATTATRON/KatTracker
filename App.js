@@ -329,14 +329,8 @@ const getHabitStreak = (historyObj = {}) => {
 
 const emptySet = (weight = '', reps = '') => ({ weight, reps, done: false });
 
-const buildSetsFromPrevious = (count, pastSets) =>
-  Array.from({ length: count }, (_, i) => {
-    const past = pastSets?.[i];
-    return emptySet(
-      past?.weight != null && past.weight !== 0 ? String(past.weight) : (past?.weight === 0 ? '0' : ''),
-      past?.reps != null && past.reps !== 0 ? String(past.reps) : (past?.reps === 0 ? '0' : '')
-    );
-  });
+const buildEmptySets = (count) =>
+  Array.from({ length: Math.max(1, count || 1) }, () => emptySet());
 
 const formatTimerString = (totalSeconds) => {
   const mins = Math.floor(totalSeconds / 60);
@@ -412,7 +406,7 @@ function ExerciseSetLogger({
               <View style={{ flex: 1, marginRight: 8 }}>
                 <TextInput
                   style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
-                  placeholder={past ? String(past.weight ?? '0') : '0.0'}
+                  placeholder="0.0"
                   placeholderTextColor="#555"
                   keyboardType="decimal-pad"
                   editable={!isSetDone}
@@ -423,7 +417,7 @@ function ExerciseSetLogger({
               <View style={{ flex: 1, marginRight: 8 }}>
                 <TextInput
                   style={[styles.logInputCompact, isSetDone && styles.logInputDisabled]}
-                  placeholder={past ? String(past.reps ?? '0') : '0'}
+                  placeholder="0"
                   placeholderTextColor="#555"
                   keyboardType="numeric"
                   editable={!isSetDone}
@@ -816,6 +810,7 @@ export default function App() {
     setIsEditingSavedWorkout(false);
     setEditingSessionIndex(null);
     setEditingHistoryDate(null);
+    setImpromptuRoutine(null);
     setIsSpontaneousMode(true);
     setSpontaneousExercises([]);
     setActiveWorkoutLogs({});
@@ -823,6 +818,20 @@ export default function App() {
     setIsGymDayChecked(true);
     setCurrentTab('today');
     setTodayPane('workout');
+  };
+
+  const handleStartExtraRoutine = (routine) => {
+    setIsEditingSavedWorkout(false);
+    setEditingSessionIndex(null);
+    setEditingHistoryDate(null);
+    setIsSpontaneousMode(false);
+    setSpontaneousExercises([]);
+    setWorkoutNote('');
+    setActiveWorkoutLogs({});
+    setImpromptuRoutine(routine);
+    setIsGymDayChecked(true);
+    setTodayPane('workout');
+    setCurrentTab('today');
   };
 
   const handleAddSpontaneousExercise = () => {
@@ -844,11 +853,10 @@ export default function App() {
       saveData(STORAGE_KEYS.CUSTOM_EX_POOL, updatedCustomPool);
     }
 
-    const pastSets = getPreviousPerformance(exName, todayStr);
     setSpontaneousExercises([...spontaneousExercises, newEx]);
     setActiveWorkoutLogs(prev => ({
       ...prev,
-      [newExId]: buildSetsFromPrevious(setsCount, pastSets)
+      [newExId]: buildEmptySets(setsCount)
     }));
 
     setSpontaneousExInput('');
@@ -1054,7 +1062,8 @@ export default function App() {
     const day = getTodayDayName();
     const scheduledId = schedule[day];
     const foundScheduled = routines.find(r => r.id === scheduledId);
-    return foundScheduled || impromptuRoutine;
+    // Prefer on-the-fly / extra session picks over the weekly schedule
+    return impromptuRoutine || foundScheduled;
   }, [schedule, routines, impromptuRoutine]);
 
   // Init logs for scheduled/impromptu routine without wiping in-progress sets
@@ -1067,13 +1076,11 @@ export default function App() {
         if (prev[ex.id]?.length) {
           next[ex.id] = prev[ex.id];
         } else {
-          const pastSets = getPreviousPerformance(ex.name, todayStr);
-          next[ex.id] = buildSetsFromPrevious(ex.defaultSets || DEFAULT_SETS, pastSets);
+          next[ex.id] = buildEmptySets(ex.defaultSets || DEFAULT_SETS);
         }
       });
       return next;
     });
-    setIsGymDayChecked(false);
   }, [currentActiveRoutine?.id, isSpontaneousMode, isEditingSavedWorkout]);
 
   const handleUpdateLogCell = (exId, setIndex, field, value) => {
@@ -1504,26 +1511,6 @@ export default function App() {
                   )}
                 </View>
               </>
-            ) : isTodayCompleted ? (
-              <View style={styles.completedBannerCard}>
-                <Ionicons name="checkmark-circle" size={44} color={THEME.success} style={{ marginBottom: 10 }} />
-                <Text style={styles.completedBannerTitle}>Workout Saved</Text>
-                <Text style={styles.completedBannerMuted}>
-                  {todayHistoryEntry?.routineName || 'Today'} is saved in history. You can still edit it.
-                </Text>
-                <TouchableOpacity
-                  style={[styles.primaryButton, { marginTop: 16 }]}
-                  onPress={handleEditTodayWorkout}
-                >
-                  <Text style={styles.primaryButtonText}>Edit Today's Workout</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.primaryButton, { marginTop: 10, backgroundColor: THEME.surfaceLight }]}
-                  onPress={() => setCurrentTab('history')}
-                >
-                  <Text style={[styles.primaryButtonText, { color: THEME.text, fontSize: 13 }]}>View History</Text>
-                </TouchableOpacity>
-              </View>
             ) : isSpontaneousMode ? (
               <View style={[styles.card, { borderLeftWidth: 5, borderLeftColor: THEME.accent }]}>
                 <View style={styles.rowBetween}>
@@ -1589,6 +1576,61 @@ export default function App() {
                   </View>
                 )}
               </View>
+            ) : (isTodayCompleted && !impromptuRoutine) ? (
+              <>
+                <View style={styles.completedBannerCard}>
+                  <Ionicons name="checkmark-circle" size={44} color={THEME.success} style={{ marginBottom: 10 }} />
+                  <Text style={styles.completedBannerTitle}>Workout Saved</Text>
+                  <Text style={styles.completedBannerMuted}>
+                    {todayHistoryEntry?.routineName || 'Today'} is saved in history. You can still edit it or start another session.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.primaryButton, { marginTop: 16 }]}
+                    onPress={handleEditTodayWorkout}
+                  >
+                    <Text style={styles.primaryButtonText}>Edit Today's Workout</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.primaryButton, { marginTop: 10, backgroundColor: THEME.surfaceLight }]}
+                    onPress={() => setCurrentTab('history')}
+                  >
+                    <Text style={[styles.primaryButtonText, { color: THEME.text, fontSize: 13 }]}>View History</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Start Another Workout</Text>
+                  <Text style={styles.cardMutedText}>Do a second session today:</Text>
+
+                  <TouchableOpacity
+                    style={[styles.spontaneousLaunchBtn, { marginTop: 12 }]}
+                    onPress={handleStartSpontaneousSession}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="flash-sharp" size={18} color="#FFF" style={{ marginRight: 8 }} />
+                    <Text style={styles.spontaneousLaunchBtnText}>Start Spontaneous Session</Text>
+                  </TouchableOpacity>
+
+                  {routines.length === 0 ? (
+                    <Text style={{ color: THEME.textMuted, marginTop: 10, textAlign: 'center' }}>
+                      No routines yet. Create one in Routines.
+                    </Text>
+                  ) : (
+                    <View style={{ marginTop: 8 }}>
+                      {routines.map(r => (
+                        <TouchableOpacity
+                          key={r.id}
+                          style={[styles.flexibleRoutineItem, { borderLeftColor: r.color }]}
+                          onPress={() => handleStartExtraRoutine(r)}
+                        >
+                          <Text style={{ color: THEME.text, fontWeight: '600' }}>Start {r.name}</Text>
+                          <Ionicons name="play-circle" size={20} color={r.color} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
             ) : (
               <>
                 {currentActiveRoutine ? (
@@ -1597,7 +1639,9 @@ export default function App() {
                       <View style={{ flex: 1, marginRight: 8 }}>
                         <Text style={styles.cardTitle}>{currentActiveRoutine.name}</Text>
                         <Text style={styles.cardMutedText}>
-                          {impromptuRoutine ? 'Loaded for today' : `Scheduled for ${getTodayDayName()}`}
+                          {impromptuRoutine
+                            ? (isTodayCompleted ? 'Extra session for today' : 'Loaded for today')
+                            : `Scheduled for ${getTodayDayName()}`}
                         </Text>
                       </View>
                       <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
