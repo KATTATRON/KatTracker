@@ -16,14 +16,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-
-let ImagePicker = null;
-try {
-  // Optional: install with `npx expo install expo-image-picker`
-  ImagePicker = require('expo-image-picker');
-} catch (e) {
-  ImagePicker = null;
-}
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // --- CONSTANTS & CONFIG ---
 const THEME = {
@@ -1724,13 +1718,6 @@ export default function App() {
   };
 
   const pickMonthlyPhoto = async (fromCamera) => {
-    if (!ImagePicker) {
-      return Alert.alert(
-        'Camera unavailable',
-        'Install expo-image-picker in your Expo project:\nnpx expo install expo-image-picker'
-      );
-    }
-
     const monthKey = captureMonthKey || getMonthKey();
     const existing = monthlyPhotos[monthKey]?.photos || [];
     if (existing.length >= MAX_MONTHLY_PHOTOS) {
@@ -1739,37 +1726,59 @@ export default function App() {
 
     try {
       if (fromCamera) {
-        const perm = await ImagePicker.requestCameraPermissionsAsync();
-        if (!perm.granted) return Alert.alert('Permission needed', 'Camera access is required.');
+        const camPerm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!camPerm.granted) {
+          return Alert.alert('Permission needed', 'Please allow camera access in your phone settings.');
+        }
       } else {
-        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!perm.granted) return Alert.alert('Permission needed', 'Photo library access is required.');
+        const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!libPerm.granted) {
+          return Alert.alert('Permission needed', 'Please allow photo library access in your phone settings.');
+        }
       }
 
-      const result = fromCamera
-        ? await ImagePicker.launchCameraAsync({
-          quality: 0.45,
-          base64: true,
-          allowsEditing: true,
-          aspect: [3, 4]
-        })
-        : await ImagePicker.launchImageLibraryAsync({
-          quality: 0.45,
-          base64: true,
-          allowsEditing: true,
-          aspect: [3, 4],
-          mediaTypes: ImagePicker.MediaTypeOptions?.Images || 'images'
-        });
+      const pickerOptions = {
+        mediaTypes: ['images'],
+        quality: 0.6,
+        allowsEditing: false,
+        exif: false,
+      };
 
-      if (result.canceled || !result.assets?.length) return;
-      const asset = result.assets[0];
-      const uri = asset.base64
-        ? `data:image/jpeg;base64,${asset.base64}`
-        : asset.uri;
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync(pickerOptions)
+        : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+
+      if (result.canceled) return;
+      const asset = result.assets?.[0];
+      if (!asset?.uri) {
+        return Alert.alert('Error', 'No image was returned by the picker.');
+      }
+
+      let storedUri = asset.uri;
+
+      // Persist into app documents so the photo survives restarts
+      // (picker cache URIs can disappear; huge base64 also breaks AsyncStorage)
+      if (Platform.OS !== 'web') {
+        try {
+          const dir = `${FileSystem.documentDirectory || ''}kat_monthly_photos/`;
+          const dirInfo = await FileSystem.getInfoAsync(dir);
+          if (!dirInfo.exists) {
+            await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+          }
+          const dest = `${dir}${Date.now()}_${Math.floor(Math.random() * 100000)}.jpg`;
+          await FileSystem.copyAsync({ from: asset.uri, to: dest });
+          storedUri = dest;
+        } catch (copyErr) {
+          // Fall back to picker URI if copy fails
+          storedUri = asset.uri;
+        }
+      } else if (asset.base64) {
+        storedUri = `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`;
+      }
 
       const photo = {
-        id: Date.now().toString() + Math.random().toString(),
-        uri
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        uri: storedUri
       };
 
       const updated = {
@@ -1779,10 +1788,21 @@ export default function App() {
           savedAt: Date.now()
         }
       };
+
       setMonthlyPhotos(updated);
-      saveData(STORAGE_KEYS.MONTHLY_PHOTOS, updated);
+      try {
+        await AsyncStorage.setItem(STORAGE_KEYS.MONTHLY_PHOTOS, JSON.stringify(updated));
+      } catch (saveErr) {
+        return Alert.alert(
+          'Save failed',
+          'Could not save photo metadata. Try again with fewer / smaller photos.'
+        );
+      }
     } catch (e) {
-      Alert.alert('Error', 'Could not add photo. Make sure expo-image-picker is installed.');
+      Alert.alert(
+        'Photo error',
+        e?.message || 'Could not add photo. Restart Expo and try Gallery first.'
+      );
     }
   };
 
