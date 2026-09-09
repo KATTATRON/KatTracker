@@ -41,6 +41,11 @@ const ROUTINE_COLORS = {
 
 const TIMER_PRESETS = [60, 90, 120, 180, 240];
 const DEFAULT_SETS = 2;
+const RECOVERY_CATEGORIES = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Core'];
+const DEFAULT_RECOVERY_HOURS = RECOVERY_CATEGORIES.reduce((acc, item) => {
+  acc[item] = 36;
+  return acc;
+}, {});
 
 const EXERCISE_DICTIONARY = [
   // CHEST
@@ -142,7 +147,8 @@ const STORAGE_KEYS = {
   HISTORY: '@kat_tracker_history_v3',
   CUSTOM_EX_POOL: '@kat_tracker_custom_pool_v3',
   ADDICTIONS: '@kat_tracker_addictions_v3',
-  PRS: '@kat_tracker_prs_v3'
+  PRS: '@kat_tracker_prs_v3',
+  RECOVERY_WINDOWS: '@kat_tracker_recovery_windows_v1'
 };
 
 // --- UTILITY FUNCTIONS ---
@@ -317,6 +323,7 @@ function ExerciseSetLogger({
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('today');
+  const [todayPane, setTodayPane] = useState('workout'); // 'workout' | 'stats'
   const [historyPane, setHistoryPane] = useState('log'); // 'log' | 'prs'
   const [routines, setRoutines] = useState([]);
   const [schedule, setSchedule] = useState({
@@ -369,6 +376,8 @@ export default function App() {
   const [addictionModalVisible, setAddictionModalVisible] = useState(false);
   const [newAddictionName, setNewAddictionName] = useState('');
   const [newAddictionColor, setNewAddictionColor] = useState('Red');
+  const [recoveryWindows, setRecoveryWindows] = useState(DEFAULT_RECOVERY_HOURS);
+  const [recoverySettingsVisible, setRecoverySettingsVisible] = useState(false);
 
   // Rest timer
   useEffect(() => {
@@ -405,6 +414,7 @@ export default function App() {
       const storedCustomEx = await AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_EX_POOL);
       const storedAddictions = await AsyncStorage.getItem(STORAGE_KEYS.ADDICTIONS);
       const storedPrs = await AsyncStorage.getItem(STORAGE_KEYS.PRS);
+      const storedRecoveryWindows = await AsyncStorage.getItem(STORAGE_KEYS.RECOVERY_WINDOWS);
 
       if (storedRoutines) setRoutines(JSON.parse(storedRoutines));
       if (storedSchedule) setSchedule(JSON.parse(storedSchedule));
@@ -412,6 +422,9 @@ export default function App() {
       if (storedCustomEx) setCustomExercisePool(JSON.parse(storedCustomEx));
       if (storedAddictions) setAddictions(JSON.parse(storedAddictions));
       if (storedPrs) setPrs(JSON.parse(storedPrs));
+      if (storedRecoveryWindows) {
+        setRecoveryWindows({ ...DEFAULT_RECOVERY_HOURS, ...JSON.parse(storedRecoveryWindows) });
+      }
     } catch (e) {
       Alert.alert('Error', 'Could not load your saved data.');
     } finally {
@@ -441,43 +454,55 @@ export default function App() {
 
   const recoveryMatrix = useMemo(() => {
     const now = Date.now();
-    const categories = { Chest: 0, Back: 0, Shoulders: 0, Biceps: 0, Triceps: 0, Legs: 0, Core: 0 };
+    const latestCategoryTimestamp = RECOVERY_CATEGORIES.reduce((acc, item) => {
+      acc[item] = null;
+      return acc;
+    }, {});
 
     Object.values(history).forEach((dayEntry) => {
       const daySessions = Array.isArray(dayEntry) ? dayEntry : [dayEntry];
       daySessions.forEach((entry) => {
-        const timestamp = entry.timestamp || 0;
-        const hoursAgo = (now - timestamp) / (1000 * 60 * 60);
-
-        if (hoursAgo >= 0 && hoursAgo <= 48) {
-          (entry.exercises || []).forEach((ex) => {
-            const match = EXERCISE_DICTIONARY.find(
-              d => d.name.toLowerCase() === ex.name.toLowerCase()
-            );
-            if (match && Object.prototype.hasOwnProperty.call(categories, match.category)) {
-              categories[match.category] += ex.sets ? ex.sets.length : 0;
-            }
-          });
-        }
+        const sessionTimestamp = entry.timestamp || 0;
+        (entry.exercises || []).forEach((ex) => {
+          const match = EXERCISE_DICTIONARY.find(
+            d => d.name.toLowerCase() === ex.name.toLowerCase()
+          );
+          if (!match || !RECOVERY_CATEGORIES.includes(match.category)) return;
+          const current = latestCategoryTimestamp[match.category];
+          if (!current || sessionTimestamp > current) {
+            latestCategoryTimestamp[match.category] = sessionTimestamp;
+          }
+        });
       });
     });
 
-    return Object.entries(categories).map(([category, volume]) => {
-      let status = 'Fresh';
-      let color = THEME.success;
-      if (volume > 12) {
-        status = 'Exhausted';
-        color = '#EF4444';
-      } else if (volume > 5) {
+    return RECOVERY_CATEGORIES.map((category) => {
+      const targetHours = Math.max(1, parseInt(recoveryWindows[category], 10) || 36);
+      const lastHitTimestamp = latestCategoryTimestamp[category];
+      const hoursSince = lastHitTimestamp ? (now - lastHitTimestamp) / (1000 * 60 * 60) : Number.POSITIVE_INFINITY;
+      const hoursLeft = Math.max(0, targetHours - hoursSince);
+      const progress = Math.max(0, Math.min(1, hoursSince / targetHours));
+
+      let status = 'Ready';
+      let color = '#22C55E';
+      if (hoursLeft > 0 && progress < 0.5) {
         status = 'Fatigued';
-        color = '#F59E0B';
-      } else if (volume > 0) {
+        color = '#EF4444';
+      } else if (hoursLeft > 0) {
         status = 'Recovering';
-        color = '#3B82F6';
+        color = '#F59E0B';
       }
-      return { category, volume, status, color };
+
+      return {
+        category,
+        status,
+        color,
+        progress,
+        hoursLeft,
+        targetHours,
+      };
     });
-  }, [history]);
+  }, [history, recoveryWindows]);
 
   const getPreviousPerformance = useCallback((exerciseName, currentDateStr) => {
     const sortedDates = Object.keys(history)
@@ -914,6 +939,14 @@ export default function App() {
     }
   };
 
+  const handleUpdateRecoveryWindow = (category, nextHoursRaw) => {
+    const parsed = parseInt(nextHoursRaw, 10);
+    const safeHours = Number.isNaN(parsed) ? 36 : Math.max(1, parsed);
+    const updated = { ...recoveryWindows, [category]: safeHours };
+    setRecoveryWindows(updated);
+    saveData(STORAGE_KEYS.RECOVERY_WINDOWS, updated);
+  };
+
   const filteredSuggestions = useMemo(() => {
     if (!exInput.trim()) return [];
     return combinedExercisePool.filter(item =>
@@ -1015,26 +1048,46 @@ export default function App() {
           <View>
             <Text style={styles.viewTitle}>Today's Workout</Text>
 
-            <View style={styles.card}>
-              <View style={styles.rowBetween}>
-                <Text style={styles.cardTitle}>48-Hour Recovery</Text>
-                <Text style={styles.cardMutedText}>Auto-calculated</Text>
-              </View>
-              <View style={styles.recoveryGrid}>
+            <View style={styles.todayPaneRow}>
+              <TouchableOpacity
+                style={[styles.todayPaneBtn, todayPane === 'workout' && styles.todayPaneBtnActive]}
+                onPress={() => setTodayPane('workout')}
+              >
+                <Text style={[styles.todayPaneBtnText, todayPane === 'workout' && styles.todayPaneBtnTextActive]}>Workout</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.todayPaneBtn, todayPane === 'stats' && styles.todayPaneBtnActive]}
+                onPress={() => setTodayPane('stats')}
+              >
+                <Text style={[styles.todayPaneBtnText, todayPane === 'stats' && styles.todayPaneBtnTextActive]}>Stats</Text>
+              </TouchableOpacity>
+            </View>
+
+            {todayPane === 'stats' ? (
+              <View style={styles.recoveryPanelCard}>
+                <View style={styles.rowBetween}>
+                  <Text style={styles.recoveryPanelTitle}>Recovery</Text>
+                  <TouchableOpacity onPress={() => setRecoverySettingsVisible(true)}>
+                    <Text style={styles.recoveryDetailsLink}>Details</Text>
+                  </TouchableOpacity>
+                </View>
+
                 {recoveryMatrix.map((item) => (
-                  <View key={item.category} style={styles.recoveryBadge}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={styles.recoveryCategory}>{item.category}</Text>
-                      <View style={[styles.statusDot, { backgroundColor: item.color }]} />
+                  <View key={item.category} style={styles.recoveryLineRow}>
+                    <Text style={styles.recoveryLineCategory}>{item.category}</Text>
+                    <View style={styles.recoveryLineBarTrack}>
+                      <View style={[styles.recoveryLineBarFill, { width: `${item.progress * 100}%`, backgroundColor: item.color }]} />
                     </View>
-                    <Text style={[styles.recoveryStatus, { color: item.color }]}>{item.status}</Text>
-                    <Text style={styles.recoveryVolume}>{item.volume} sets / 48h</Text>
+                    <View style={styles.recoveryLineRightCol}>
+                      <Text style={[styles.recoveryLineStatus, { color: item.color }]}>{item.status}</Text>
+                      <Text style={styles.recoveryLineTime}>
+                        {item.hoursLeft <= 0 ? '0h left' : `${Math.ceil(item.hoursLeft)}h left`}
+                      </Text>
+                    </View>
                   </View>
                 ))}
               </View>
-            </View>
-
-            {isTodayCompleted ? (
+            ) : isTodayCompleted ? (
               <View style={styles.completedBannerCard}>
                 <Ionicons name="checkmark-circle" size={44} color={THEME.success} style={{ marginBottom: 10 }} />
                 <Text style={styles.completedBannerTitle}>Workout Saved</Text>
@@ -1465,6 +1518,43 @@ export default function App() {
         )}
 
       </ScrollView>
+
+      <Modal visible={recoverySettingsVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Recovery Settings</Text>
+              <TouchableOpacity onPress={() => setRecoverySettingsVisible(false)}>
+                <Ionicons name="close" size={22} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.cardMutedText, { marginBottom: 10 }]}>
+              Set recovery hours per muscle group (default is 36h).
+            </Text>
+
+            {RECOVERY_CATEGORIES.map((category) => (
+              <View key={category} style={styles.recoverySettingRow}>
+                <Text style={styles.recoverySettingName}>{category}</Text>
+                <TextInput
+                  style={styles.recoverySettingInput}
+                  keyboardType="numeric"
+                  value={String(recoveryWindows[category] ?? 36)}
+                  onChangeText={(val) => handleUpdateRecoveryWindow(category, val)}
+                />
+                <Text style={styles.recoverySettingSuffix}>h</Text>
+              </View>
+            ))}
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight, marginTop: 12 }]}
+              onPress={() => setRecoverySettingsVisible(false)}
+            >
+              <Text style={{ color: THEME.text, textAlign: 'center' }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Routine creator / editor */}
       <Modal visible={routineModalVisible} animationType="slide" transparent>
@@ -1941,6 +2031,113 @@ const styles = StyleSheet.create({
   },
   historyPaneBtnTextActive: {
     color: '#FFF',
+  },
+  todayPaneRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  todayPaneBtn: {
+    flex: 1,
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  todayPaneBtnActive: {
+    backgroundColor: THEME.accent,
+    borderColor: THEME.accent,
+  },
+  todayPaneBtnText: {
+    color: THEME.textMuted,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  todayPaneBtnTextActive: {
+    color: '#FFF',
+  },
+  recoveryPanelCard: {
+    backgroundColor: '#1D1D26',
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+  },
+  recoveryPanelTitle: {
+    color: THEME.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  recoveryDetailsLink: {
+    color: '#4F8DFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  recoveryLineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  recoveryLineCategory: {
+    width: 82,
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  recoveryLineBarTrack: {
+    flex: 1,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#2C2C38',
+    overflow: 'hidden',
+    marginHorizontal: 10,
+  },
+  recoveryLineBarFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  recoveryLineRightCol: {
+    width: 90,
+    alignItems: 'flex-end',
+  },
+  recoveryLineStatus: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  recoveryLineTime: {
+    color: THEME.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  recoverySettingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  recoverySettingName: {
+    flex: 1,
+    color: THEME.text,
+    fontWeight: '600',
+  },
+  recoverySettingInput: {
+    width: 54,
+    backgroundColor: THEME.background,
+    color: THEME.text,
+    borderRadius: 6,
+    textAlign: 'center',
+    paddingVertical: 6,
+    marginRight: 6,
+  },
+  recoverySettingSuffix: {
+    color: THEME.textMuted,
+    width: 12,
   },
   scrollContainer: {
     padding: 16,
