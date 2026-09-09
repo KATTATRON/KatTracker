@@ -16,11 +16,15 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
+let ImagePicker = null;
+try {
+  ImagePicker = require('expo-image-picker');
+} catch (e) {
+  ImagePicker = null;
+}
 
 let FileSystem = null;
 try {
-  // Prefer legacy API (stable copyAsync / documentDirectory)
   FileSystem = require('expo-file-system/legacy');
 } catch (e) {
   try {
@@ -1729,31 +1733,133 @@ export default function App() {
     setMonthlyCompareVisible(true);
   };
 
-  const pickMonthlyPhoto = async (fromCamera) => {
-    const monthKey = captureMonthKey || getMonthKey();
+  const saveMonthlyPhotoAsset = async (monthKey, asset) => {
+    let storedUri = asset.uri;
+
+    if (Platform.OS !== 'web' && FileSystem?.documentDirectory && FileSystem?.copyAsync) {
+      try {
+        const dir = `${FileSystem.documentDirectory}kat_monthly_photos/`;
+        const dirInfo = await FileSystem.getInfoAsync(dir);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+        }
+        const dest = `${dir}${Date.now()}_${Math.floor(Math.random() * 100000)}.jpg`;
+        await FileSystem.copyAsync({ from: asset.uri, to: dest });
+        storedUri = dest;
+      } catch (copyErr) {
+        storedUri = asset.uri;
+      }
+    } else if (asset.base64) {
+      storedUri = `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`;
+    }
+
+    const photo = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      uri: storedUri
+    };
+
     const existing = monthlyPhotos[monthKey]?.photos || [];
     if (existing.length >= MAX_MONTHLY_PHOTOS) {
-      return Alert.alert('Limit reached', `Max ${MAX_MONTHLY_PHOTOS} photos per month.`);
+      Alert.alert('Limit reached', `Max ${MAX_MONTHLY_PHOTOS} photos per month.`);
+      return;
     }
-    if (photoPicking) return;
 
-    // Native camera/gallery often never appears while a RN Modal is still open.
-    // Close first, wait for dismiss animation, then launch the picker.
+    const updated = {
+      ...monthlyPhotos,
+      [monthKey]: {
+        photos: [...existing, photo],
+        savedAt: Date.now()
+      }
+    };
+
+    setMonthlyPhotos(updated);
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.MONTHLY_PHOTOS, JSON.stringify(updated));
+    } catch (saveErr) {
+      Alert.alert('Save failed', 'Could not save photo. Try a smaller image.');
+    }
+  };
+
+  const pickMonthlyPhoto = async (fromCamera, monthKeyOverride) => {
+    const monthKey = monthKeyOverride || captureMonthKey || getMonthKey();
+    const existing = monthlyPhotos[monthKey]?.photos || [];
+    if (existing.length >= MAX_MONTHLY_PHOTOS) {
+      Alert.alert('Limit reached', `Max ${MAX_MONTHLY_PHOTOS} photos per month.`);
+      return;
+    }
+
+    if (photoPicking) return;
     setPhotoPicking(true);
-    setMonthlyCaptureVisible(false);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    const unlockTimer = setTimeout(() => setPhotoPicking(false), 20000);
 
     try {
+      setMonthlyCaptureVisible(false);
+      setAlbumVisible(false);
+      setMonthlyCompareVisible(false);
+
+      // Browser / Expo web: native ImagePicker is flaky — use a real file input
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const asset = await new Promise((resolve) => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/*';
+          input.style.display = 'none';
+          let settled = false;
+          const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            try { document.body.removeChild(input); } catch (e) {}
+            resolve(value);
+          };
+          input.onchange = () => {
+            const file = input.files && input.files[0];
+            if (!file) return finish(null);
+            const uri = URL.createObjectURL(file);
+            const reader = new FileReader();
+            reader.onload = () => {
+              finish({
+                uri,
+                base64: typeof reader.result === 'string' ? reader.result.split(',')[1] : null,
+                mimeType: file.type || 'image/jpeg'
+              });
+            };
+            reader.onerror = () => finish({ uri, base64: null, mimeType: file.type || 'image/jpeg' });
+            reader.readAsDataURL(file);
+          };
+          input.oncancel = () => finish(null);
+          document.body.appendChild(input);
+          input.click();
+          // If user dismisses without oncancel support
+          setTimeout(() => {
+            if (!settled && (!input.files || input.files.length === 0)) {
+              // don't auto-cancel too early; wait for change
+            }
+          }, 0);
+        });
+
+        if (!asset?.uri) return;
+        await saveMonthlyPhotoAsset(monthKey, asset);
+        return;
+      }
+
+      if (!ImagePicker?.launchImageLibraryAsync || !ImagePicker?.launchCameraAsync) {
+        Alert.alert(
+          'Photos unavailable',
+          'expo-image-picker is missing.\n\nIn the Expo project folder run:\nnpx expo install expo-image-picker\n\nThen restart:\nnpx expo start -c\n\nUse Expo Go on your phone (camera/gallery need a real device).'
+        );
+        return;
+      }
+
       if (fromCamera) {
         const camPerm = await ImagePicker.requestCameraPermissionsAsync();
         if (!camPerm.granted) {
-          Alert.alert('Permission needed', 'Please allow camera access in your phone settings.');
+          Alert.alert('Permission needed', 'Allow camera access in phone settings, then try again.');
           return;
         }
-      } else {
+      } else if (Platform.OS === 'ios') {
         const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!libPerm.granted) {
-          Alert.alert('Permission needed', 'Please allow photo library access in your phone settings.');
+          Alert.alert('Permission needed', 'Allow photo library access in phone settings, then try again.');
           return;
         }
       }
@@ -1761,79 +1867,58 @@ export default function App() {
       const mediaTypes =
         ImagePicker.MediaTypeOptions?.Images ??
         ImagePicker.MediaType?.Images ??
-        ['images'];
+        'images';
 
       const pickerOptions = {
         mediaTypes,
         quality: 0.7,
         allowsEditing: false,
         exif: false,
-        base64: Platform.OS === 'web',
+        base64: false,
       };
 
       const result = fromCamera
         ? await ImagePicker.launchCameraAsync(pickerOptions)
         : await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
-      if (result.canceled) return;
-      const asset = result.assets?.[0];
+      if (result?.canceled) return;
+      const asset = result?.assets?.[0];
       if (!asset?.uri) {
-        Alert.alert('Error', 'No image was returned by the picker.');
+        Alert.alert('Error', 'No image was returned. Try Gallery again.');
         return;
       }
 
-      let storedUri = asset.uri;
-
-      // Persist into app documents so the photo survives restarts
-      // (picker cache URIs can disappear; huge base64 also breaks AsyncStorage)
-      if (Platform.OS !== 'web' && FileSystem?.documentDirectory && FileSystem?.copyAsync) {
-        try {
-          const dir = `${FileSystem.documentDirectory}kat_monthly_photos/`;
-          const dirInfo = await FileSystem.getInfoAsync(dir);
-          if (!dirInfo.exists) {
-            await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-          }
-          const dest = `${dir}${Date.now()}_${Math.floor(Math.random() * 100000)}.jpg`;
-          await FileSystem.copyAsync({ from: asset.uri, to: dest });
-          storedUri = dest;
-        } catch (copyErr) {
-          storedUri = asset.uri;
-        }
-      } else if (asset.base64) {
-        storedUri = `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`;
-      }
-
-      const photo = {
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        uri: storedUri
-      };
-
-      const updated = {
-        ...monthlyPhotos,
-        [monthKey]: {
-          photos: [...existing, photo],
-          savedAt: Date.now()
-        }
-      };
-
-      setMonthlyPhotos(updated);
-      try {
-        await AsyncStorage.setItem(STORAGE_KEYS.MONTHLY_PHOTOS, JSON.stringify(updated));
-      } catch (saveErr) {
-        Alert.alert(
-          'Save failed',
-          'Could not save photo metadata. Try again with fewer / smaller photos.'
-        );
-      }
+      await saveMonthlyPhotoAsset(monthKey, asset);
     } catch (e) {
       Alert.alert(
         'Photo error',
-        e?.message || 'Could not add photo. Restart Expo and try Gallery first.'
+        e?.message || 'Could not open camera/gallery. Use Expo Go on your phone (not only a browser preview).'
       );
     } finally {
+      clearTimeout(unlockTimer);
       setPhotoPicking(false);
-      setMonthlyCaptureVisible(true);
     }
+  };
+
+  const promptAddMonthlyPhoto = (monthKey = getMonthKey()) => {
+    setCaptureMonthKey(monthKey);
+    if (photoPicking) return;
+
+    if (Platform.OS === 'web') {
+      // Keep user gesture for browser file picker
+      pickMonthlyPhoto(false, monthKey);
+      return;
+    }
+
+    Alert.alert(
+      'Add progress photo',
+      formatMonthLabel(monthKey),
+      [
+        { text: 'Camera', onPress: () => { pickMonthlyPhoto(true, monthKey); } },
+        { text: 'Gallery', onPress: () => { pickMonthlyPhoto(false, monthKey); } },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
   };
 
   const removeMonthlyPhoto = (monthKey, photoId) => {
@@ -1872,7 +1957,7 @@ export default function App() {
           : 'Compare last month, then take this month\'s progress photos.',
         [
           { text: 'Later', style: 'cancel' },
-          ...(!hasThis ? [{ text: 'Take photos', onPress: () => openMonthlyCapture(thisMonth) }] : [])
+          ...(!hasThis ? [{ text: 'Take photos', onPress: () => promptAddMonthlyPhoto(thisMonth) }] : [])
         ]
       );
     } else if (!hasThis) {
@@ -1881,7 +1966,7 @@ export default function App() {
         'It\'s the 1st — take a few progress pics to compare next month.',
         [
           { text: 'Later', style: 'cancel' },
-          { text: 'Take photos', onPress: () => openMonthlyCapture(thisMonth) }
+          { text: 'Take photos', onPress: () => promptAddMonthlyPhoto(thisMonth) }
         ]
       );
     }
@@ -2079,11 +2164,41 @@ export default function App() {
                         {formatMonthLabel(getMonthKey())}: {(monthlyPhotos[getMonthKey()]?.photos || []).length}/{MAX_MONTHLY_PHOTOS} pics
                       </Text>
                     </View>
-                    <TouchableOpacity style={styles.smallAccentBtn} onPress={() => openMonthlyCapture(getMonthKey())}>
-                      <Ionicons name="camera" size={14} color="#FFF" />
-                      <Text style={styles.smallAccentBtnText}>Add</Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', marginTop: 10 }}>
+                    <TouchableOpacity
+                      style={[styles.primaryButton, { flex: 1, marginRight: 8, opacity: photoPicking ? 0.6 : 1 }]}
+                      disabled={photoPicking}
+                      onPress={() => pickMonthlyPhoto(true, getMonthKey())}
+                    >
+                      <Text style={styles.primaryButtonText}>{photoPicking ? 'Opening…' : 'Camera'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.primaryButton, { flex: 1, backgroundColor: THEME.surfaceLight, opacity: photoPicking ? 0.6 : 1 }]}
+                      disabled={photoPicking}
+                      onPress={() => pickMonthlyPhoto(false, getMonthKey())}
+                    >
+                      <Text style={[styles.primaryButtonText, { color: THEME.text }]}>
+                        {photoPicking ? 'Opening…' : 'Gallery'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                    {(monthlyPhotos[getMonthKey()]?.photos || []).map((photo) => (
+                      <View key={photo.id} style={styles.photoThumbWrap}>
+                        <Image source={{ uri: photo.uri }} style={styles.photoThumb} />
+                        <TouchableOpacity
+                          style={styles.photoDeleteBtn}
+                          onPress={() => removeMonthlyPhoto(getMonthKey(), photo.id)}
+                        >
+                          <Ionicons name="trash" size={14} color="#FFF" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </ScrollView>
+
                   <View style={{ flexDirection: 'row', marginTop: 8 }}>
                     <TouchableOpacity style={[styles.proteinQuickBtn, { marginRight: 8 }]} onPress={() => setAlbumVisible(true)}>
                       <Text style={styles.proteinQuickBtnText}>Album</Text>
@@ -3595,14 +3710,14 @@ export default function App() {
               <TouchableOpacity
                 style={[styles.primaryButton, { flex: 1, marginRight: 8, opacity: photoPicking ? 0.6 : 1 }]}
                 disabled={photoPicking}
-                onPress={() => pickMonthlyPhoto(true)}
+                onPress={() => pickMonthlyPhoto(true, captureMonthKey || getMonthKey())}
               >
                 <Text style={styles.primaryButtonText}>{photoPicking ? 'Opening…' : 'Camera'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.primaryButton, { flex: 1, backgroundColor: THEME.surfaceLight, opacity: photoPicking ? 0.6 : 1 }]}
                 disabled={photoPicking}
-                onPress={() => pickMonthlyPhoto(false)}
+                onPress={() => pickMonthlyPhoto(false, captureMonthKey || getMonthKey())}
               >
                 <Text style={[styles.primaryButtonText, { color: THEME.text }]}>
                   {photoPicking ? 'Opening…' : 'Gallery'}
@@ -3681,7 +3796,7 @@ export default function App() {
                 style={[styles.primaryButton, { flex: 1 }]}
                 onPress={() => {
                   setMonthlyCompareVisible(false);
-                  openMonthlyCapture(getMonthKey());
+                  promptAddMonthlyPhoto(getMonthKey());
                 }}
               >
                 <Text style={styles.primaryButtonText}>Take photos</Text>
@@ -3708,8 +3823,8 @@ export default function App() {
                   <View key={monthKey} style={{ marginBottom: 16 }}>
                     <View style={styles.rowBetween}>
                       <Text style={styles.cardTitle}>{formatMonthLabel(monthKey)}</Text>
-                      <TouchableOpacity onPress={() => openMonthlyCapture(monthKey)}>
-                        <Text style={{ color: THEME.accent, fontWeight: '700' }}>Edit</Text>
+                      <TouchableOpacity onPress={() => promptAddMonthlyPhoto(monthKey)}>
+                        <Text style={{ color: THEME.accent, fontWeight: '700' }}>Add</Text>
                       </TouchableOpacity>
                     </View>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
