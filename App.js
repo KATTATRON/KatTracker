@@ -276,10 +276,13 @@ const STORAGE_KEYS = {
   SUPPLEMENTS: '@kat_tracker_supplements_v1',
   SUPPLEMENT_LOG: '@kat_tracker_supplement_log_v1',
   SLEEP_LOG: '@kat_tracker_sleep_log_v1',
-  WEIGHT_LOG: '@kat_tracker_weight_log_v1'
+  WEIGHT_LOG: '@kat_tracker_weight_log_v1',
+  PROTEIN_GOAL: '@kat_tracker_protein_goal_v1',
+  PROTEIN_LOG: '@kat_tracker_protein_log_v1'
 };
 
 const SLEEP_TARGET_HOURS = 8;
+const DEFAULT_PROTEIN_GOAL = 150;
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // --- UTILITY FUNCTIONS ---
@@ -384,6 +387,50 @@ const getHabitStreak = (historyObj = {}) => {
     cursor.setDate(cursor.getDate() - 1);
   }
   return streak;
+};
+
+const getGymDayStreak = (historyObj = {}) => {
+  const hasWorkout = (dateStr) => getSessionsForDate(historyObj, dateStr).length > 0;
+  const cursor = new Date();
+  const todayStr = getLocalDateString(cursor);
+  if (!hasWorkout(todayStr)) {
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  let streak = 0;
+  // Cap lookback so empty history doesn't loop forever conceptually
+  for (let i = 0; i < 400; i += 1) {
+    const key = getLocalDateString(cursor);
+    if (!hasWorkout(key)) break;
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+};
+
+const getBestGymWeek = (historyObj = {}) => {
+  let best = { count: 0, start: null, end: null };
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  for (let weeksAgo = 0; weeksAgo < 12; weeksAgo += 1) {
+    const end = new Date(today);
+    end.setDate(today.getDate() - weeksAgo * 7);
+    const start = new Date(end);
+    start.setDate(end.getDate() - 6);
+    let count = 0;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = getLocalDateString(d);
+      if (getSessionsForDate(historyObj, key).length > 0) count += 1;
+    }
+    if (count > best.count) {
+      best = {
+        count,
+        start: getLocalDateString(start),
+        end: getLocalDateString(end)
+      };
+    }
+  }
+  return best;
 };
 
 const emptySet = (weight = '', reps = '') => ({ weight, reps, done: false });
@@ -574,6 +621,9 @@ export default function App() {
   const [sleepBedInput, setSleepBedInput] = useState('');
   const [sleepWakeInput, setSleepWakeInput] = useState('');
   const [weightInput, setWeightInput] = useState('');
+  const [proteinGoal, setProteinGoal] = useState(DEFAULT_PROTEIN_GOAL);
+  const [proteinLog, setProteinLog] = useState({}); // { date: grams }
+  const [proteinInput, setProteinInput] = useState('');
 
   // Rest timer
   useEffect(() => {
@@ -615,6 +665,8 @@ export default function App() {
       const storedSupplementLog = await AsyncStorage.getItem(STORAGE_KEYS.SUPPLEMENT_LOG);
       const storedSleepLog = await AsyncStorage.getItem(STORAGE_KEYS.SLEEP_LOG);
       const storedWeightLog = await AsyncStorage.getItem(STORAGE_KEYS.WEIGHT_LOG);
+      const storedProteinGoal = await AsyncStorage.getItem(STORAGE_KEYS.PROTEIN_GOAL);
+      const storedProteinLog = await AsyncStorage.getItem(STORAGE_KEYS.PROTEIN_LOG);
 
       if (storedRoutines) setRoutines(JSON.parse(storedRoutines));
       if (storedSchedule) setSchedule(JSON.parse(storedSchedule));
@@ -642,6 +694,16 @@ export default function App() {
         const todayWeight = parsedWeight[getLocalDateString()];
         if (todayWeight != null) setWeightInput(String(todayWeight).replace('.', ','));
       }
+      if (storedProteinGoal) {
+        const g = parseInt(JSON.parse(storedProteinGoal), 10);
+        if (!Number.isNaN(g) && g > 0) setProteinGoal(g);
+      }
+      if (storedProteinLog) {
+        const parsedProtein = JSON.parse(storedProteinLog);
+        setProteinLog(parsedProtein);
+        const todayProtein = parsedProtein[getLocalDateString()];
+        if (todayProtein != null) setProteinInput(String(todayProtein));
+      }
     } catch (e) {
       Alert.alert('Error', 'Could not load your saved data.');
     } finally {
@@ -668,6 +730,11 @@ export default function App() {
   const isTodayCompleted = useMemo(() => {
     return todayHistorySessions.length > 0 && !isEditingSavedWorkout;
   }, [todayHistorySessions, isEditingSavedWorkout]);
+
+  const gymStreak = useMemo(() => getGymDayStreak(history), [history]);
+  const bestGymWeek = useMemo(() => getBestGymWeek(history), [history]);
+  const todayProtein = proteinLog[todayStr] != null ? Number(proteinLog[todayStr]) : 0;
+  const proteinProgress = Math.max(0, Math.min(1, todayProtein / Math.max(1, proteinGoal)));
 
   const recoveryMatrix = useMemo(() => {
     const now = Date.now();
@@ -1482,6 +1549,44 @@ export default function App() {
     Alert.alert('Saved', `Weight logged: ${parsed} kg`);
   };
 
+  const handleAdjustProteinGoal = (delta) => {
+    const next = Math.max(10, Math.min(400, (parseInt(proteinGoal, 10) || DEFAULT_PROTEIN_GOAL) + delta));
+    setProteinGoal(next);
+    saveData(STORAGE_KEYS.PROTEIN_GOAL, next);
+  };
+
+  const handleSetProteinGoal = (raw) => {
+    const parsed = parseInt(String(raw).replace(/[^\d]/g, ''), 10);
+    if (Number.isNaN(parsed)) {
+      setProteinGoal(DEFAULT_PROTEIN_GOAL);
+      return;
+    }
+    const next = Math.max(10, Math.min(400, parsed));
+    setProteinGoal(next);
+    saveData(STORAGE_KEYS.PROTEIN_GOAL, next);
+  };
+
+  const handleSaveProteinToday = () => {
+    const parsed = parseFloat(String(proteinInput).trim().replace(',', '.'));
+    if (Number.isNaN(parsed) || parsed < 0) {
+      return Alert.alert('Invalid Protein', 'Enter grams like 140 or 35,5.');
+    }
+    const updated = { ...proteinLog, [todayStr]: parsed };
+    setProteinLog(updated);
+    setProteinInput(String(parsed).replace('.', ','));
+    saveData(STORAGE_KEYS.PROTEIN_LOG, updated);
+    Alert.alert('Saved', `Protein logged: ${parsed}g`);
+  };
+
+  const handleAddProteinQuick = (amount) => {
+    const current = proteinLog[todayStr] != null ? Number(proteinLog[todayStr]) : 0;
+    const next = Math.round((current + amount) * 10) / 10;
+    const updated = { ...proteinLog, [todayStr]: next };
+    setProteinLog(updated);
+    setProteinInput(String(next).replace('.', ','));
+    saveData(STORAGE_KEYS.PROTEIN_LOG, updated);
+  };
+
   const formatSuppDose = (doseMg) => {
     if (doseMg == null || Number.isNaN(doseMg)) return '';
     if (doseMg > 0 && doseMg < 1) {
@@ -1612,6 +1717,37 @@ export default function App() {
 
             {todayPane === 'stats' ? (
               <>
+                <View style={styles.motivationCard}>
+                  <Text style={styles.motivationTitle}>Motivation</Text>
+                  <View style={styles.motivationRow}>
+                    <View style={styles.motivationPill}>
+                      <Ionicons name="flame" size={18} color="#F59E0B" style={{ marginRight: 6 }} />
+                      <View>
+                        <Text style={styles.motivationPillLabel}>Gym streak</Text>
+                        <Text style={styles.motivationPillValue}>
+                          {gymStreak} day{gymStreak === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.motivationPill}>
+                      <Ionicons name="trophy" size={18} color={THEME.accent} style={{ marginRight: 6 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.motivationPillLabel}>Best week</Text>
+                        <Text style={styles.motivationPillValue}>
+                          {bestGymWeek.count > 0
+                            ? `${bestGymWeek.count} gym day${bestGymWeek.count === 1 ? '' : 's'}`
+                            : 'No badge yet'}
+                        </Text>
+                        {bestGymWeek.count > 0 ? (
+                          <Text style={styles.motivationPillSub}>
+                            {bestGymWeek.start} → {bestGymWeek.end}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
                 <View style={styles.recoveryPanelCard}>
                   <View style={styles.rowBetween}>
                     <Text style={styles.recoveryPanelTitle}>Recovery</Text>
@@ -1841,6 +1977,80 @@ export default function App() {
                         </View>
                       );
                     })}
+                  </View>
+                </View>
+
+                <View style={styles.healthCard}>
+                  <Text style={styles.healthCardTitle}>Protein Goal</Text>
+                  <Text style={styles.healthCardHint}>Adjustable daily target + today's intake</Text>
+
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.proteinGoalLabel}>Daily goal</Text>
+                    <View style={styles.proteinGoalControls}>
+                      <TouchableOpacity style={styles.proteinGoalBtn} onPress={() => handleAdjustProteinGoal(-10)}>
+                        <Text style={styles.proteinGoalBtnText}>-10</Text>
+                      </TouchableOpacity>
+                      <TextInput
+                        style={styles.proteinGoalInput}
+                        keyboardType="numeric"
+                        value={String(proteinGoal)}
+                        onChangeText={handleSetProteinGoal}
+                      />
+                      <Text style={styles.proteinGoalUnit}>g</Text>
+                      <TouchableOpacity style={styles.proteinGoalBtn} onPress={() => handleAdjustProteinGoal(10)}>
+                        <Text style={styles.proteinGoalBtnText}>+10</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.proteinProgressTrack}>
+                    <View
+                      style={[
+                        styles.proteinProgressFill,
+                        {
+                          width: `${proteinProgress * 100}%`,
+                          backgroundColor: proteinProgress >= 1 ? '#22C55E' : THEME.accent
+                        }
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.proteinProgressText}>
+                    {String(todayProtein).replace('.', ',')} / {proteinGoal}g
+                    {proteinProgress >= 1 ? ' · Goal hit' : ''}
+                  </Text>
+
+                  <View style={styles.rowBetween}>
+                    <View style={{ flex: 1, marginRight: 10 }}>
+                      <Text style={styles.inputLabel}>Today's protein (g)</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="e.g. 140"
+                        placeholderTextColor="#666"
+                        keyboardType="decimal-pad"
+                        value={proteinInput}
+                        onChangeText={(val) => {
+                          const cleaned = val.replace(/[^\d.,]/g, '');
+                          const parts = cleaned.split(/[.,]/);
+                          if (parts.length <= 1) {
+                            setProteinInput(cleaned);
+                            return;
+                          }
+                          const sep = cleaned.includes(',') ? ',' : '.';
+                          setProteinInput(`${parts[0]}${sep}${parts.slice(1).join('')}`);
+                        }}
+                      />
+                    </View>
+                    <TouchableOpacity style={[styles.primaryButton, { marginTop: 22, paddingHorizontal: 16 }]} onPress={handleSaveProteinToday}>
+                      <Text style={styles.primaryButtonText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.proteinQuickRow}>
+                    {[20, 30, 40].map((amt) => (
+                      <TouchableOpacity key={amt} style={styles.proteinQuickBtn} onPress={() => handleAddProteinQuick(amt)}>
+                        <Text style={styles.proteinQuickBtnText}>+{amt}g</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
 
@@ -2324,6 +2534,32 @@ export default function App() {
                 <Ionicons name="add-sharp" size={18} color="#FFF" />
                 <Text style={styles.smallAccentBtnText}>New Habit</Text>
               </TouchableOpacity>
+            </View>
+
+            <View style={styles.habitStreakBoard}>
+              <View style={styles.rowBetween}>
+                <Text style={styles.habitStreakBoardTitle}>Streaks</Text>
+                <Ionicons name="flame" size={18} color="#F59E0B" />
+              </View>
+              {addictions.length === 0 ? (
+                <Text style={styles.habitStreakEmpty}>Add a habit to start a streak.</Text>
+              ) : (
+                addictions
+                  .map((tracker) => ({
+                    ...tracker,
+                    streak: getHabitStreak(tracker.history)
+                  }))
+                  .sort((a, b) => b.streak - a.streak)
+                  .map((tracker) => (
+                    <View key={tracker.id} style={styles.habitStreakRow}>
+                      <View style={[styles.habitStreakDot, { backgroundColor: tracker.color }]} />
+                      <Text style={styles.habitStreakName} numberOfLines={1}>{tracker.name}</Text>
+                      <Text style={styles.habitStreakValue}>
+                        {tracker.streak} day{tracker.streak === 1 ? '' : 's'}
+                      </Text>
+                    </View>
+                  ))
+              )}
             </View>
 
             {addictions.length === 0 ? (
@@ -3163,6 +3399,159 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#2A2A35',
+  },
+  motivationCard: {
+    backgroundColor: '#1D1D26',
+    borderRadius: 22,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+  },
+  motivationTitle: {
+    color: THEME.text,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  motivationRow: {
+    flexDirection: 'row',
+  },
+  motivationPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 12,
+    padding: 10,
+    marginRight: 8,
+  },
+  motivationPillLabel: {
+    color: THEME.textMuted,
+    fontSize: 11,
+  },
+  motivationPillValue: {
+    color: THEME.text,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  motivationPillSub: {
+    color: THEME.textMuted,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  proteinGoalLabel: {
+    color: THEME.text,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  proteinGoalControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  proteinGoalBtn: {
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  proteinGoalBtnText: {
+    color: THEME.text,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  proteinGoalInput: {
+    width: 58,
+    marginHorizontal: 8,
+    backgroundColor: THEME.background,
+    color: THEME.text,
+    borderRadius: 8,
+    textAlign: 'center',
+    paddingVertical: 6,
+    fontWeight: '700',
+  },
+  proteinGoalUnit: {
+    color: THEME.textMuted,
+    marginRight: 8,
+    fontWeight: '600',
+  },
+  proteinProgressTrack: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#2C2C38',
+    overflow: 'hidden',
+    marginTop: 12,
+  },
+  proteinProgressFill: {
+    height: '100%',
+    borderRadius: 5,
+  },
+  proteinProgressText: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  proteinQuickRow: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  proteinQuickBtn: {
+    flex: 1,
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  proteinQuickBtnText: {
+    color: THEME.text,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  habitStreakBoard: {
+    backgroundColor: '#1D1D26',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+  },
+  habitStreakBoardTitle: {
+    color: THEME.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  habitStreakEmpty: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginTop: 10,
+  },
+  habitStreakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  habitStreakDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  habitStreakName: {
+    flex: 1,
+    color: THEME.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  habitStreakValue: {
+    color: '#F59E0B',
+    fontWeight: '800',
+    fontSize: 13,
   },
   healthCardTitle: {
     color: THEME.text,
