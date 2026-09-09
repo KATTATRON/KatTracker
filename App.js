@@ -212,6 +212,12 @@ const formatTimerString = (totalSeconds) => {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
 
+const getSessionsForDate = (historyObj, dateStr) => {
+  const dayEntry = historyObj?.[dateStr];
+  if (!dayEntry) return [];
+  return Array.isArray(dayEntry) ? dayEntry : [dayEntry];
+};
+
 // Shared set logger (same look as before, used by scheduled + spontaneous)
 function ExerciseSetLogger({
   exercise,
@@ -330,6 +336,7 @@ export default function App() {
   const [activeWorkoutLogs, setActiveWorkoutLogs] = useState({});
   const [impromptuRoutine, setImpromptuRoutine] = useState(null);
   const [isEditingSavedWorkout, setIsEditingSavedWorkout] = useState(false);
+  const [editingSessionIndex, setEditingSessionIndex] = useState(null);
 
   const [isSpontaneousMode, setIsSpontaneousMode] = useState(false);
   const [spontaneousExercises, setSpontaneousExercises] = useState([]);
@@ -425,30 +432,34 @@ export default function App() {
   }, [customExercisePool]);
 
   const todayStr = getLocalDateString();
-  const todayHistoryEntry = history[todayStr];
+  const todayHistorySessions = useMemo(() => getSessionsForDate(history, todayStr), [history, todayStr]);
+  const todayHistoryEntry = todayHistorySessions[todayHistorySessions.length - 1] || null;
 
   const isTodayCompleted = useMemo(() => {
-    return !!todayHistoryEntry && !isEditingSavedWorkout;
-  }, [todayHistoryEntry, isEditingSavedWorkout]);
+    return todayHistorySessions.length > 0 && !isEditingSavedWorkout;
+  }, [todayHistorySessions, isEditingSavedWorkout]);
 
   const recoveryMatrix = useMemo(() => {
     const now = Date.now();
     const categories = { Chest: 0, Back: 0, Shoulders: 0, Biceps: 0, Triceps: 0, Legs: 0, Core: 0 };
 
-    Object.values(history).forEach((entry) => {
-      const timestamp = entry.timestamp || 0;
-      const hoursAgo = (now - timestamp) / (1000 * 60 * 60);
+    Object.values(history).forEach((dayEntry) => {
+      const daySessions = Array.isArray(dayEntry) ? dayEntry : [dayEntry];
+      daySessions.forEach((entry) => {
+        const timestamp = entry.timestamp || 0;
+        const hoursAgo = (now - timestamp) / (1000 * 60 * 60);
 
-      if (hoursAgo >= 0 && hoursAgo <= 48) {
-        (entry.exercises || []).forEach((ex) => {
-          const match = EXERCISE_DICTIONARY.find(
-            d => d.name.toLowerCase() === ex.name.toLowerCase()
-          );
-          if (match && Object.prototype.hasOwnProperty.call(categories, match.category)) {
-            categories[match.category] += ex.sets ? ex.sets.length : 0;
-          }
-        });
-      }
+        if (hoursAgo >= 0 && hoursAgo <= 48) {
+          (entry.exercises || []).forEach((ex) => {
+            const match = EXERCISE_DICTIONARY.find(
+              d => d.name.toLowerCase() === ex.name.toLowerCase()
+            );
+            if (match && Object.prototype.hasOwnProperty.call(categories, match.category)) {
+              categories[match.category] += ex.sets ? ex.sets.length : 0;
+            }
+          });
+        }
+      });
     });
 
     return Object.entries(categories).map(([category, volume]) => {
@@ -474,12 +485,15 @@ export default function App() {
       .sort((a, b) => (a < b ? 1 : -1));
 
     for (const d of sortedDates) {
-      const pastEntry = history[d];
-      const foundEx = pastEntry.exercises?.find(
-        e => e.name.toLowerCase() === exerciseName.toLowerCase()
-      );
-      if (foundEx && foundEx.sets) {
-        return foundEx.sets;
+      const sessions = getSessionsForDate(history, d);
+      for (let i = sessions.length - 1; i >= 0; i -= 1) {
+        const pastEntry = sessions[i];
+        const foundEx = pastEntry.exercises?.find(
+          e => e.name.toLowerCase() === exerciseName.toLowerCase()
+        );
+        if (foundEx && foundEx.sets) {
+          return foundEx.sets;
+        }
       }
     }
     return null;
@@ -598,6 +612,7 @@ export default function App() {
 
   const handleStartSpontaneousSession = () => {
     setIsEditingSavedWorkout(false);
+    setEditingSessionIndex(null);
     setIsSpontaneousMode(true);
     setSpontaneousExercises([]);
     setActiveWorkoutLogs({});
@@ -650,19 +665,30 @@ export default function App() {
       };
     });
 
+    const newSession = {
+      routineName,
+      color,
+      exercises: structuredExercises,
+      timestamp: Date.now()
+    };
+
+    const existingSessions = getSessionsForDate(history, todayStr);
+    let nextSessions;
+    if (isEditingSavedWorkout && editingSessionIndex !== null && existingSessions[editingSessionIndex]) {
+      nextSessions = existingSessions.map((session, idx) => (idx === editingSessionIndex ? newSession : session));
+    } else {
+      nextSessions = [...existingSessions, newSession];
+    }
+
     const updatedHistory = {
       ...history,
-      [todayStr]: {
-        routineName,
-        color,
-        exercises: structuredExercises,
-        timestamp: Date.now()
-      }
+      [todayStr]: nextSessions
     };
 
     setHistory(updatedHistory);
     saveData(STORAGE_KEYS.HISTORY, updatedHistory);
     setIsEditingSavedWorkout(false);
+    setEditingSessionIndex(null);
     setIsGymDayChecked(false);
     setImpromptuRoutine(null);
     setIsSpontaneousMode(false);
@@ -714,6 +740,7 @@ export default function App() {
     setActiveWorkoutLogs(logs);
     setIsSpontaneousMode(true);
     setIsEditingSavedWorkout(true);
+    setEditingSessionIndex(Math.max(0, todayHistorySessions.length - 1));
     setIsGymDayChecked(true);
     setCurrentTab('today');
   };
@@ -1074,6 +1101,7 @@ export default function App() {
                       onPress={() => {
                         setIsSpontaneousMode(false);
                         setIsEditingSavedWorkout(false);
+                        setEditingSessionIndex(null);
                         setSpontaneousExercises([]);
                         setActiveWorkoutLogs({});
                       }}
@@ -1287,9 +1315,10 @@ export default function App() {
                       {generateHeatmapDates().map((week, wIdx) => (
                         <View key={wIdx} style={{ marginRight: 4 }}>
                           {week.map((dateStr) => {
-                            const historyItem = history[dateStr];
-                            const isLogged = !!historyItem;
-                            const cellColor = isLogged ? (historyItem.color || THEME.success) : THEME.surfaceLight;
+                            const daySessions = getSessionsForDate(history, dateStr);
+                            const latestSession = daySessions[daySessions.length - 1];
+                            const isLogged = daySessions.length > 0;
+                            const cellColor = isLogged ? (latestSession?.color || THEME.success) : THEME.surfaceLight;
                             return (
                               <TouchableOpacity
                                 key={dateStr}
@@ -1314,11 +1343,11 @@ export default function App() {
                 {Object.keys(history).length === 0 ? (
                   <Text style={{ color: THEME.textMuted }}>No history yet.</Text>
                 ) : (
-                  Object.keys(history).sort((a, b) => (a < b ? 1 : -1)).map(dateKey => {
-                    const item = history[dateKey];
-                    return (
+                  Object.keys(history).sort((a, b) => (a < b ? 1 : -1)).flatMap(dateKey => {
+                    const daySessions = getSessionsForDate(history, dateKey);
+                    return daySessions.map((item, sessionIdx) => (
                       <TouchableOpacity
-                        key={dateKey}
+                        key={`${dateKey}-${sessionIdx}`}
                         style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.color || THEME.accent }]}
                         onPress={() => {
                           setSelectedHistoryDate(dateKey);
@@ -1327,13 +1356,15 @@ export default function App() {
                       >
                         <View style={styles.rowBetween}>
                           <Text style={{ color: THEME.text, fontWeight: '700' }}>{dateKey}</Text>
-                          <Text style={{ color: item.color || THEME.accent, fontWeight: '700' }}>{item.routineName}</Text>
+                          <Text style={{ color: item.color || THEME.accent, fontWeight: '700' }}>
+                            {daySessions.length > 1 ? `${item.routineName} (${sessionIdx + 1}/${daySessions.length})` : item.routineName}
+                          </Text>
                         </View>
                         <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>
                           {item.exercises ? item.exercises.length : 0} Exercises
                         </Text>
                       </TouchableOpacity>
-                    );
+                    ));
                   })
                 )}
               </>
@@ -1696,57 +1727,61 @@ export default function App() {
 
             {selectedHistoryDate && history[selectedHistoryDate] ? (
               <ScrollView>
-                <Text style={{ color: THEME.accent, fontWeight: '700', fontSize: 16, marginBottom: 12 }}>
-                  {history[selectedHistoryDate].routineName}
-                </Text>
+                {getSessionsForDate(history, selectedHistoryDate).map((session, sessionIdx, sessionArr) => (
+                  <View key={`${selectedHistoryDate}-${sessionIdx}`} style={{ marginBottom: 14 }}>
+                    <Text style={{ color: session.color || THEME.accent, fontWeight: '700', fontSize: 16, marginBottom: 10 }}>
+                      {sessionArr.length > 1 ? `Session ${sessionIdx + 1}: ${session.routineName}` : session.routineName}
+                    </Text>
 
-                {history[selectedHistoryDate].exercises?.map((ex, exIdx) => {
-                  const pastSets = getPreviousPerformance(ex.name, selectedHistoryDate);
+                    {session.exercises?.map((ex, exIdx) => {
+                      const pastSets = getPreviousPerformance(ex.name, selectedHistoryDate);
 
-                  return (
-                    <View key={exIdx} style={{ marginBottom: 16, padding: 10, backgroundColor: THEME.surfaceLight, borderRadius: 8 }}>
-                      <Text style={{ color: THEME.text, fontWeight: '700', marginBottom: 6 }}>{ex.name}</Text>
+                      return (
+                        <View key={exIdx} style={{ marginBottom: 16, padding: 10, backgroundColor: THEME.surfaceLight, borderRadius: 8 }}>
+                          <Text style={{ color: THEME.text, fontWeight: '700', marginBottom: 6 }}>{ex.name}</Text>
 
-                      {ex.sets?.map((set, sIdx) => {
-                        let diffTag = null;
+                          {ex.sets?.map((set, sIdx) => {
+                            let diffTag = null;
 
-                        if (pastSets && pastSets[sIdx]) {
-                          const prevSet = pastSets[sIdx];
-                          const weightDiff = (set.weight || 0) - (prevSet.weight || 0);
-                          const repsDiff = (set.reps || 0) - (prevSet.reps || 0);
+                            if (pastSets && pastSets[sIdx]) {
+                              const prevSet = pastSets[sIdx];
+                              const weightDiff = (set.weight || 0) - (prevSet.weight || 0);
+                              const repsDiff = (set.reps || 0) - (prevSet.reps || 0);
 
-                          const diffTexts = [];
-                          if (weightDiff !== 0) {
-                            diffTexts.push(`${weightDiff > 0 ? '+' : ''}${weightDiff} kg`);
-                          }
-                          if (repsDiff !== 0) {
-                            diffTexts.push(`${repsDiff > 0 ? '+' : ''}${repsDiff} reps`);
-                          }
+                              const diffTexts = [];
+                              if (weightDiff !== 0) {
+                                diffTexts.push(`${weightDiff > 0 ? '+' : ''}${weightDiff} kg`);
+                              }
+                              if (repsDiff !== 0) {
+                                diffTexts.push(`${repsDiff > 0 ? '+' : ''}${repsDiff} reps`);
+                              }
 
-                          if (diffTexts.length > 0) {
-                            const isPositive = weightDiff >= 0 && repsDiff >= 0;
-                            diffTag = (
-                              <View style={[styles.diffTag, { backgroundColor: isPositive ? THEME.successMuted : 'rgba(239, 68, 68, 0.15)' }]}>
-                                <Text style={[styles.diffTagText, { color: isPositive ? THEME.success : '#EF4444' }]}>
-                                  {diffTexts.join(', ')}
+                              if (diffTexts.length > 0) {
+                                const isPositive = weightDiff >= 0 && repsDiff >= 0;
+                                diffTag = (
+                                  <View style={[styles.diffTag, { backgroundColor: isPositive ? THEME.successMuted : 'rgba(239, 68, 68, 0.15)' }]}>
+                                    <Text style={[styles.diffTagText, { color: isPositive ? THEME.success : '#EF4444' }]}>
+                                      {diffTexts.join(', ')}
+                                    </Text>
+                                  </View>
+                                );
+                              }
+                            }
+
+                            return (
+                              <View key={sIdx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 2 }}>
+                                <Text style={{ color: THEME.textMuted, fontSize: 13 }}>
+                                  Set {sIdx + 1}: {set.weight} KG × {set.reps} reps
                                 </Text>
+                                {diffTag}
                               </View>
                             );
-                          }
-                        }
-
-                        return (
-                          <View key={sIdx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 2 }}>
-                            <Text style={{ color: THEME.textMuted, fontSize: 13 }}>
-                              Set {sIdx + 1}: {set.weight} KG × {set.reps} reps
-                            </Text>
-                            {diffTag}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  );
-                })}
+                          })}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ))}
               </ScrollView>
             ) : (
               <Text style={{ color: THEME.textMuted }}>No workout on this date.</Text>
