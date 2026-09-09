@@ -470,6 +470,8 @@ export default function App() {
   const [impromptuRoutine, setImpromptuRoutine] = useState(null);
   const [isEditingSavedWorkout, setIsEditingSavedWorkout] = useState(false);
   const [editingSessionIndex, setEditingSessionIndex] = useState(null);
+  const [editingHistoryDate, setEditingHistoryDate] = useState(null);
+  const [workoutNote, setWorkoutNote] = useState('');
 
   const [isSpontaneousMode, setIsSpontaneousMode] = useState(false);
   const [spontaneousExercises, setSpontaneousExercises] = useState([]);
@@ -498,6 +500,7 @@ export default function App() {
 
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null);
+  const [historyNoteEdits, setHistoryNoteEdits] = useState({});
 
   const [addictionModalVisible, setAddictionModalVisible] = useState(false);
   const [newAddictionName, setNewAddictionName] = useState('');
@@ -812,11 +815,14 @@ export default function App() {
   const handleStartSpontaneousSession = () => {
     setIsEditingSavedWorkout(false);
     setEditingSessionIndex(null);
+    setEditingHistoryDate(null);
     setIsSpontaneousMode(true);
     setSpontaneousExercises([]);
     setActiveWorkoutLogs({});
+    setWorkoutNote('');
     setIsGymDayChecked(true);
     setCurrentTab('today');
+    setTodayPane('workout');
   };
 
   const handleAddSpontaneousExercise = () => {
@@ -864,60 +870,75 @@ export default function App() {
       };
     });
 
+    const targetDate = (isEditingSavedWorkout && editingHistoryDate) ? editingHistoryDate : todayStr;
+
     const newSession = {
       routineName,
       color,
       exercises: structuredExercises,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      note: workoutNote.trim()
     };
 
-    const existingSessions = getSessionsForDate(history, todayStr);
+    const existingSessions = getSessionsForDate(history, targetDate);
     let nextSessions;
     if (isEditingSavedWorkout && editingSessionIndex !== null && existingSessions[editingSessionIndex]) {
-      nextSessions = existingSessions.map((session, idx) => (idx === editingSessionIndex ? newSession : session));
+      nextSessions = existingSessions.map((session, idx) => (
+        idx === editingSessionIndex
+          ? { ...session, ...newSession, timestamp: session.timestamp || newSession.timestamp }
+          : session
+      ));
     } else {
       nextSessions = [...existingSessions, newSession];
     }
 
     const updatedHistory = {
       ...history,
-      [todayStr]: nextSessions
+      [targetDate]: nextSessions
     };
 
     setHistory(updatedHistory);
     saveData(STORAGE_KEYS.HISTORY, updatedHistory);
     setIsEditingSavedWorkout(false);
     setEditingSessionIndex(null);
+    setEditingHistoryDate(null);
     setIsGymDayChecked(false);
     setImpromptuRoutine(null);
     setIsSpontaneousMode(false);
     setSpontaneousExercises([]);
     setActiveWorkoutLogs({});
+    setWorkoutNote('');
     setTimerSeconds(0);
     setTimerActive(false);
     Alert.alert('Saved', 'Workout saved to history.');
     setCurrentTab('history');
+    setHistoryPane('log');
   };
 
   const handleSaveSpontaneousSession = () => {
     if (spontaneousExercises.length === 0) {
       return Alert.alert('Empty Session', 'Add at least one exercise before saving.');
     }
+
+    const targetDate = editingHistoryDate || todayStr;
+    const sessions = getSessionsForDate(history, targetDate);
+    const editingEntry = (isEditingSavedWorkout && editingSessionIndex !== null)
+      ? sessions[editingSessionIndex]
+      : null;
+
     persistWorkoutToHistory(
-      isEditingSavedWorkout && todayHistoryEntry?.routineName
-        ? todayHistoryEntry.routineName
-        : 'Spontaneous Session',
-      isEditingSavedWorkout && todayHistoryEntry?.color
-        ? todayHistoryEntry.color
-        : THEME.accent,
+      editingEntry?.routineName || 'Spontaneous Session',
+      editingEntry?.color || THEME.accent,
       spontaneousExercises
     );
   };
 
-  const handleEditTodayWorkout = () => {
-    if (!todayHistoryEntry) return;
+  const handleEditSavedWorkout = (dateStr, sessionIdx) => {
+    const sessions = getSessionsForDate(history, dateStr);
+    const entry = sessions[sessionIdx];
+    if (!entry) return;
 
-    const exercises = (todayHistoryEntry.exercises || []).map((ex, i) => ({
+    const exercises = (entry.exercises || []).map((ex, i) => ({
       id: `edit-${Date.now()}-${i}`,
       name: ex.name,
       defaultSets: ex.sets?.length || DEFAULT_SETS
@@ -925,7 +946,7 @@ export default function App() {
 
     const logs = {};
     exercises.forEach((ex, i) => {
-      const savedSets = todayHistoryEntry.exercises[i]?.sets || [];
+      const savedSets = entry.exercises[i]?.sets || [];
       logs[ex.id] = savedSets.length
         ? savedSets.map(s => ({
           weight: s.weight != null ? String(s.weight) : '',
@@ -937,11 +958,60 @@ export default function App() {
 
     setSpontaneousExercises(exercises);
     setActiveWorkoutLogs(logs);
+    setWorkoutNote(entry.note || '');
     setIsSpontaneousMode(true);
     setIsEditingSavedWorkout(true);
-    setEditingSessionIndex(Math.max(0, todayHistorySessions.length - 1));
+    setEditingHistoryDate(dateStr);
+    setEditingSessionIndex(sessionIdx);
     setIsGymDayChecked(true);
+    setHistoryModalVisible(false);
+    setTodayPane('workout');
     setCurrentTab('today');
+  };
+
+  const handleEditTodayWorkout = () => {
+    if (!todayHistorySessions.length) return;
+    handleEditSavedWorkout(todayStr, todayHistorySessions.length - 1);
+  };
+
+  const cancelEditingSession = () => {
+    setIsSpontaneousMode(false);
+    setIsEditingSavedWorkout(false);
+    setEditingSessionIndex(null);
+    setEditingHistoryDate(null);
+    setSpontaneousExercises([]);
+    setActiveWorkoutLogs({});
+    setWorkoutNote('');
+  };
+
+  const openHistoryDay = (dateKey) => {
+    const sessions = getSessionsForDate(history, dateKey);
+    const drafts = {};
+    sessions.forEach((s, i) => {
+      drafts[i] = s.note || '';
+    });
+    setHistoryNoteEdits(drafts);
+    setSelectedHistoryDate(dateKey);
+    setHistoryModalVisible(true);
+  };
+
+  const handleSaveHistoryNote = (sessionIdx) => {
+    if (!selectedHistoryDate) return;
+    const sessions = getSessionsForDate(history, selectedHistoryDate);
+    if (!sessions[sessionIdx]) return;
+
+    const noteText = (historyNoteEdits[sessionIdx] || '').trim();
+    const updatedSessions = sessions.map((session, idx) => (
+      idx === sessionIdx ? { ...session, note: noteText } : session
+    ));
+
+    const updatedHistory = {
+      ...history,
+      [selectedHistoryDate]: updatedSessions
+    };
+    setHistory(updatedHistory);
+    saveData(STORAGE_KEYS.HISTORY, updatedHistory);
+    Alert.alert('Saved', noteText ? 'Note saved.' : 'Note cleared.');
   };
 
   const handleSavePR = () => {
@@ -1459,10 +1529,12 @@ export default function App() {
                 <View style={styles.rowBetween}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle}>
-                      {isEditingSavedWorkout ? 'Editing Today' : 'Spontaneous Session'}
+                      {isEditingSavedWorkout ? 'Editing Workout' : 'Spontaneous Session'}
                     </Text>
                     <Text style={styles.cardMutedText}>
-                      {isEditingSavedWorkout ? 'Update and re-save today\'s workout' : 'Build a freestyle workout'}
+                      {isEditingSavedWorkout
+                        ? `Updating ${editingHistoryDate || todayStr}`
+                        : 'Build a freestyle workout'}
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -1486,25 +1558,29 @@ export default function App() {
                         key={ex.id}
                         exercise={ex}
                         sets={activeWorkoutLogs[ex.id]}
-                        pastSets={getPreviousPerformance(ex.name, todayStr)}
+                        pastSets={getPreviousPerformance(ex.name, editingHistoryDate || todayStr)}
                         {...loggerProps}
                       />
                     ))}
 
-                    <TouchableOpacity style={[styles.primaryButton, { marginTop: 16 }]} onPress={handleSaveSpontaneousSession}>
+                    <Text style={styles.noteLabel}>Note (optional)</Text>
+                    <TextInput
+                      style={styles.noteInput}
+                      placeholder="How did the session feel?"
+                      placeholderTextColor="#666"
+                      multiline
+                      value={workoutNote}
+                      onChangeText={setWorkoutNote}
+                    />
+
+                    <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={handleSaveSpontaneousSession}>
                       <Text style={styles.primaryButtonText}>
                         {isEditingSavedWorkout ? 'Save Changes' : 'Finish & Save Workout'}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.clearImpromptuBtn, { marginTop: 8 }]}
-                      onPress={() => {
-                        setIsSpontaneousMode(false);
-                        setIsEditingSavedWorkout(false);
-                        setEditingSessionIndex(null);
-                        setSpontaneousExercises([]);
-                        setActiveWorkoutLogs({});
-                      }}
+                      onPress={cancelEditingSession}
                     >
                       <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
                         {isEditingSavedWorkout ? 'Cancel Edit' : 'Cancel Session'}
@@ -1585,7 +1661,17 @@ export default function App() {
                           />
                         ))}
 
-                        <TouchableOpacity style={[styles.primaryButton, { marginTop: 10 }]} onPress={handleSaveWorkoutSession}>
+                        <Text style={styles.noteLabel}>Note (optional)</Text>
+                        <TextInput
+                          style={styles.noteInput}
+                          placeholder="How did the session feel?"
+                          placeholderTextColor="#666"
+                          multiline
+                          value={workoutNote}
+                          onChangeText={setWorkoutNote}
+                        />
+
+                        <TouchableOpacity style={[styles.primaryButton, { marginTop: 12 }]} onPress={handleSaveWorkoutSession}>
                           <Text style={styles.primaryButtonText}>Finish & Save Session</Text>
                         </TouchableOpacity>
                       </View>
@@ -1726,10 +1812,7 @@ export default function App() {
                                   styles.heatmapCell,
                                   { backgroundColor: cellColor }
                                 ]}
-                                onPress={() => {
-                                  setSelectedHistoryDate(dateStr);
-                                  setHistoryModalVisible(true);
-                                }}
+                                onPress={() => openHistoryDay(dateStr)}
                               />
                             );
                           })}
@@ -1746,24 +1829,39 @@ export default function App() {
                   Object.keys(history).sort((a, b) => (a < b ? 1 : -1)).flatMap(dateKey => {
                     const daySessions = getSessionsForDate(history, dateKey);
                     return daySessions.map((item, sessionIdx) => (
-                      <TouchableOpacity
+                      <View
                         key={`${dateKey}-${sessionIdx}`}
                         style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.color || THEME.accent }]}
-                        onPress={() => {
-                          setSelectedHistoryDate(dateKey);
-                          setHistoryModalVisible(true);
-                        }}
                       >
-                        <View style={styles.rowBetween}>
-                          <Text style={{ color: THEME.text, fontWeight: '700' }}>{dateKey}</Text>
-                          <Text style={{ color: item.color || THEME.accent, fontWeight: '700' }}>
-                            {daySessions.length > 1 ? `${item.routineName} (${sessionIdx + 1}/${daySessions.length})` : item.routineName}
+                        <TouchableOpacity onPress={() => openHistoryDay(dateKey)} activeOpacity={0.8}>
+                          <View style={styles.rowBetween}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                              <Text style={{ color: THEME.text, fontWeight: '700' }}>{dateKey}</Text>
+                              {!!(item.note && String(item.note).trim()) && (
+                                <Ionicons
+                                  name="document-text"
+                                  size={14}
+                                  color={THEME.accent}
+                                  style={{ marginLeft: 8 }}
+                                />
+                              )}
+                            </View>
+                            <Text style={{ color: item.color || THEME.accent, fontWeight: '700' }}>
+                              {daySessions.length > 1 ? `${item.routineName} (${sessionIdx + 1}/${daySessions.length})` : item.routineName}
+                            </Text>
+                          </View>
+                          <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>
+                            {item.exercises ? item.exercises.length : 0} Exercises
                           </Text>
-                        </View>
-                        <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>
-                          {item.exercises ? item.exercises.length : 0} Exercises
-                        </Text>
-                      </TouchableOpacity>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleEditSavedWorkout(dateKey, sessionIdx)}
+                          style={styles.historyEditBtn}
+                        >
+                          <Ionicons name="pencil" size={14} color={THEME.accent} style={{ marginRight: 4 }} />
+                          <Text style={{ color: THEME.accent, fontSize: 12, fontWeight: '700' }}>Edit Workout</Text>
+                        </TouchableOpacity>
+                      </View>
                     ));
                   })
                 )}
@@ -2253,9 +2351,18 @@ export default function App() {
               <ScrollView>
                 {getSessionsForDate(history, selectedHistoryDate).map((session, sessionIdx, sessionArr) => (
                   <View key={`${selectedHistoryDate}-${sessionIdx}`} style={{ marginBottom: 14 }}>
-                    <Text style={{ color: session.color || THEME.accent, fontWeight: '700', fontSize: 16, marginBottom: 10 }}>
-                      {sessionArr.length > 1 ? `Session ${sessionIdx + 1}: ${session.routineName}` : session.routineName}
-                    </Text>
+                    <View style={styles.rowBetween}>
+                      <Text style={{ color: session.color || THEME.accent, fontWeight: '700', fontSize: 16, flex: 1, marginRight: 8, marginBottom: 10 }}>
+                        {sessionArr.length > 1 ? `Session ${sessionIdx + 1}: ${session.routineName}` : session.routineName}
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.smallAccentBtn, { paddingVertical: 5 }]}
+                        onPress={() => handleEditSavedWorkout(selectedHistoryDate, sessionIdx)}
+                      >
+                        <Ionicons name="pencil" size={14} color="#FFF" />
+                        <Text style={styles.smallAccentBtnText}>Edit</Text>
+                      </TouchableOpacity>
+                    </View>
 
                     {session.exercises?.map((ex, exIdx) => {
                       const pastSets = getPreviousPerformance(ex.name, selectedHistoryDate);
@@ -2304,6 +2411,22 @@ export default function App() {
                         </View>
                       );
                     })}
+
+                    <Text style={styles.noteLabel}>Note</Text>
+                    <TextInput
+                      style={styles.noteInput}
+                      placeholder="Add a note for this workout..."
+                      placeholderTextColor="#666"
+                      multiline
+                      value={historyNoteEdits[sessionIdx] ?? session.note ?? ''}
+                      onChangeText={(val) => setHistoryNoteEdits(prev => ({ ...prev, [sessionIdx]: val }))}
+                    />
+                    <TouchableOpacity
+                      style={[styles.primaryButton, { marginTop: 8, marginBottom: 8, paddingVertical: 10 }]}
+                      onPress={() => handleSaveHistoryNote(sessionIdx)}
+                    >
+                      <Text style={styles.primaryButtonText}>Save Note</Text>
+                    </TouchableOpacity>
                   </View>
                 ))}
               </ScrollView>
@@ -2621,6 +2744,31 @@ const styles = StyleSheet.create({
     color: THEME.text,
     fontSize: 14,
     fontWeight: '700',
+  },
+  noteLabel: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  noteInput: {
+    backgroundColor: THEME.surfaceLight,
+    color: THEME.text,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    minHeight: 72,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  historyEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
   },
   supplementsCard: {
     backgroundColor: '#1D1D26',
