@@ -17,7 +17,18 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+
+let FileSystem = null;
+try {
+  // Prefer legacy API (stable copyAsync / documentDirectory)
+  FileSystem = require('expo-file-system/legacy');
+} catch (e) {
+  try {
+    FileSystem = require('expo-file-system');
+  } catch (e2) {
+    FileSystem = null;
+  }
+}
 
 // --- CONSTANTS & CONFIG ---
 const THEME = {
@@ -658,6 +669,7 @@ export default function App() {
   const [albumVisible, setAlbumVisible] = useState(false);
   const [compareMonthKey, setCompareMonthKey] = useState(null); // previous month being compared
   const [captureMonthKey, setCaptureMonthKey] = useState(null);
+  const [photoPicking, setPhotoPicking] = useState(false);
 
   // Rest timer
   useEffect(() => {
@@ -1723,25 +1735,40 @@ export default function App() {
     if (existing.length >= MAX_MONTHLY_PHOTOS) {
       return Alert.alert('Limit reached', `Max ${MAX_MONTHLY_PHOTOS} photos per month.`);
     }
+    if (photoPicking) return;
+
+    // Native camera/gallery often never appears while a RN Modal is still open.
+    // Close first, wait for dismiss animation, then launch the picker.
+    setPhotoPicking(true);
+    setMonthlyCaptureVisible(false);
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     try {
       if (fromCamera) {
         const camPerm = await ImagePicker.requestCameraPermissionsAsync();
         if (!camPerm.granted) {
-          return Alert.alert('Permission needed', 'Please allow camera access in your phone settings.');
+          Alert.alert('Permission needed', 'Please allow camera access in your phone settings.');
+          return;
         }
       } else {
         const libPerm = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!libPerm.granted) {
-          return Alert.alert('Permission needed', 'Please allow photo library access in your phone settings.');
+          Alert.alert('Permission needed', 'Please allow photo library access in your phone settings.');
+          return;
         }
       }
 
+      const mediaTypes =
+        ImagePicker.MediaTypeOptions?.Images ??
+        ImagePicker.MediaType?.Images ??
+        ['images'];
+
       const pickerOptions = {
-        mediaTypes: ['images'],
-        quality: 0.6,
+        mediaTypes,
+        quality: 0.7,
         allowsEditing: false,
         exif: false,
+        base64: Platform.OS === 'web',
       };
 
       const result = fromCamera
@@ -1751,16 +1778,17 @@ export default function App() {
       if (result.canceled) return;
       const asset = result.assets?.[0];
       if (!asset?.uri) {
-        return Alert.alert('Error', 'No image was returned by the picker.');
+        Alert.alert('Error', 'No image was returned by the picker.');
+        return;
       }
 
       let storedUri = asset.uri;
 
       // Persist into app documents so the photo survives restarts
       // (picker cache URIs can disappear; huge base64 also breaks AsyncStorage)
-      if (Platform.OS !== 'web') {
+      if (Platform.OS !== 'web' && FileSystem?.documentDirectory && FileSystem?.copyAsync) {
         try {
-          const dir = `${FileSystem.documentDirectory || ''}kat_monthly_photos/`;
+          const dir = `${FileSystem.documentDirectory}kat_monthly_photos/`;
           const dirInfo = await FileSystem.getInfoAsync(dir);
           if (!dirInfo.exists) {
             await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
@@ -1769,7 +1797,6 @@ export default function App() {
           await FileSystem.copyAsync({ from: asset.uri, to: dest });
           storedUri = dest;
         } catch (copyErr) {
-          // Fall back to picker URI if copy fails
           storedUri = asset.uri;
         }
       } else if (asset.base64) {
@@ -1793,7 +1820,7 @@ export default function App() {
       try {
         await AsyncStorage.setItem(STORAGE_KEYS.MONTHLY_PHOTOS, JSON.stringify(updated));
       } catch (saveErr) {
-        return Alert.alert(
+        Alert.alert(
           'Save failed',
           'Could not save photo metadata. Try again with fewer / smaller photos.'
         );
@@ -1803,6 +1830,9 @@ export default function App() {
         'Photo error',
         e?.message || 'Could not add photo. Restart Expo and try Gallery first.'
       );
+    } finally {
+      setPhotoPicking(false);
+      setMonthlyCaptureVisible(true);
     }
   };
 
@@ -3563,16 +3593,20 @@ export default function App() {
 
             <View style={{ flexDirection: 'row', marginTop: 12, marginBottom: 10 }}>
               <TouchableOpacity
-                style={[styles.primaryButton, { flex: 1, marginRight: 8 }]}
+                style={[styles.primaryButton, { flex: 1, marginRight: 8, opacity: photoPicking ? 0.6 : 1 }]}
+                disabled={photoPicking}
                 onPress={() => pickMonthlyPhoto(true)}
               >
-                <Text style={styles.primaryButtonText}>Camera</Text>
+                <Text style={styles.primaryButtonText}>{photoPicking ? 'Opening…' : 'Camera'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.primaryButton, { flex: 1, backgroundColor: THEME.surfaceLight }]}
+                style={[styles.primaryButton, { flex: 1, backgroundColor: THEME.surfaceLight, opacity: photoPicking ? 0.6 : 1 }]}
+                disabled={photoPicking}
                 onPress={() => pickMonthlyPhoto(false)}
               >
-                <Text style={[styles.primaryButtonText, { color: THEME.text }]}>Gallery</Text>
+                <Text style={[styles.primaryButtonText, { color: THEME.text }]}>
+                  {photoPicking ? 'Opening…' : 'Gallery'}
+                </Text>
               </TouchableOpacity>
             </View>
 
