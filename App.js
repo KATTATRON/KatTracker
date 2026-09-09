@@ -47,6 +47,40 @@ const DEFAULT_RECOVERY_HOURS = RECOVERY_CATEGORIES.reduce((acc, item) => {
   return acc;
 }, {});
 
+// Suggestion pool for supplement name autocomplete (ideas only — list starts empty)
+const SUPPLEMENT_DICTIONARY = [
+  { name: 'Omega-3 Fish Oil', doseMg: 1000 },
+  { name: 'Ashwagandha', doseMg: 600 },
+  { name: 'Zinc Picolinate', doseMg: 15 },
+  { name: 'Magnesium Citrate', doseMg: 400 },
+  { name: 'Caffeine (Anhydrous)', doseMg: 200 },
+  { name: 'Creatine Monohydrate', doseMg: 5000 },
+  { name: 'Vitamin D3', doseMg: 0.05 }, // 50µg
+  { name: 'Vitamin C', doseMg: 1000 },
+  { name: 'Multivitamin', doseMg: 1 },
+  { name: 'Whey Protein', doseMg: 25000 },
+  { name: 'Casein Protein', doseMg: 25000 },
+  { name: 'Beta-Alanine', doseMg: 3200 },
+  { name: 'Citrulline Malate', doseMg: 6000 },
+  { name: 'BCAAs', doseMg: 5000 },
+  { name: 'L-Carnitine', doseMg: 1000 },
+  { name: 'Fish Oil', doseMg: 1000 },
+  { name: 'Collagen Peptides', doseMg: 10000 },
+  { name: 'Electrolytes', doseMg: 1000 },
+  { name: 'Iron', doseMg: 18 },
+  { name: 'Calcium', doseMg: 500 },
+  { name: 'Potassium', doseMg: 300 },
+  { name: 'Vitamin B12', doseMg: 1 },
+  { name: 'Vitamin B Complex', doseMg: 1 },
+  { name: 'Probiotics', doseMg: 1 },
+  { name: 'Turmeric / Curcumin', doseMg: 500 },
+  { name: 'Melatonin', doseMg: 3 },
+  { name: 'Glutamine', doseMg: 5000 },
+  { name: 'Pre-Workout', doseMg: 1 },
+  { name: 'NAC', doseMg: 600 },
+  { name: 'CoQ10', doseMg: 100 },
+];
+
 const EXERCISE_DICTIONARY = [
   // CHEST
   { name: 'Chin-ups (Bodyweight / Weighted)', category: 'Back' },
@@ -148,7 +182,9 @@ const STORAGE_KEYS = {
   CUSTOM_EX_POOL: '@kat_tracker_custom_pool_v3',
   ADDICTIONS: '@kat_tracker_addictions_v3',
   PRS: '@kat_tracker_prs_v3',
-  RECOVERY_WINDOWS: '@kat_tracker_recovery_windows_v1'
+  RECOVERY_WINDOWS: '@kat_tracker_recovery_windows_v1',
+  SUPPLEMENTS: '@kat_tracker_supplements_v1',
+  SUPPLEMENT_LOG: '@kat_tracker_supplement_log_v1'
 };
 
 // --- UTILITY FUNCTIONS ---
@@ -379,6 +415,14 @@ export default function App() {
   const [recoveryWindows, setRecoveryWindows] = useState(DEFAULT_RECOVERY_HOURS);
   const [recoverySettingsVisible, setRecoverySettingsVisible] = useState(false);
 
+  const [supplements, setSupplements] = useState([]); // empty by default
+  const [supplementLog, setSupplementLog] = useState({}); // { date: { suppId: true } }
+  const [suppModalVisible, setSuppModalVisible] = useState(false);
+  const [editingSuppId, setEditingSuppId] = useState(null);
+  const [suppNameInput, setSuppNameInput] = useState('');
+  const [suppDoseInput, setSuppDoseInput] = useState('');
+  const [showSuppSuggestions, setShowSuppSuggestions] = useState(false);
+
   // Rest timer
   useEffect(() => {
     if (!timerActive) return undefined;
@@ -415,6 +459,8 @@ export default function App() {
       const storedAddictions = await AsyncStorage.getItem(STORAGE_KEYS.ADDICTIONS);
       const storedPrs = await AsyncStorage.getItem(STORAGE_KEYS.PRS);
       const storedRecoveryWindows = await AsyncStorage.getItem(STORAGE_KEYS.RECOVERY_WINDOWS);
+      const storedSupplements = await AsyncStorage.getItem(STORAGE_KEYS.SUPPLEMENTS);
+      const storedSupplementLog = await AsyncStorage.getItem(STORAGE_KEYS.SUPPLEMENT_LOG);
 
       if (storedRoutines) setRoutines(JSON.parse(storedRoutines));
       if (storedSchedule) setSchedule(JSON.parse(storedSchedule));
@@ -425,6 +471,8 @@ export default function App() {
       if (storedRecoveryWindows) {
         setRecoveryWindows({ ...DEFAULT_RECOVERY_HOURS, ...JSON.parse(storedRecoveryWindows) });
       }
+      if (storedSupplements) setSupplements(JSON.parse(storedSupplements));
+      if (storedSupplementLog) setSupplementLog(JSON.parse(storedSupplementLog));
     } catch (e) {
       Alert.alert('Error', 'Could not load your saved data.');
     } finally {
@@ -947,6 +995,111 @@ export default function App() {
     saveData(STORAGE_KEYS.RECOVERY_WINDOWS, updated);
   };
 
+  const filteredSuppSuggestions = useMemo(() => {
+    if (!suppNameInput.trim()) return [];
+    const q = suppNameInput.toLowerCase();
+    return SUPPLEMENT_DICTIONARY.filter(item => item.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [suppNameInput]);
+
+  const openAddSupplementModal = () => {
+    setEditingSuppId(null);
+    setSuppNameInput('');
+    setSuppDoseInput('');
+    setShowSuppSuggestions(false);
+    setSuppModalVisible(true);
+  };
+
+  const openEditSupplementModal = (supp) => {
+    setEditingSuppId(supp.id);
+    setSuppNameInput(supp.name);
+    setSuppDoseInput(String(supp.doseMg ?? ''));
+    setShowSuppSuggestions(false);
+    setSuppModalVisible(true);
+  };
+
+  const closeSuppModal = () => {
+    setSuppModalVisible(false);
+    setEditingSuppId(null);
+    setSuppNameInput('');
+    setSuppDoseInput('');
+    setShowSuppSuggestions(false);
+  };
+
+  const handleSaveSupplement = () => {
+    const name = suppNameInput.trim();
+    if (!name) return Alert.alert('Invalid Input', 'Enter a supplement name.');
+
+    const doseMg = parseFloat(suppDoseInput);
+    if (Number.isNaN(doseMg) || doseMg < 0) {
+      return Alert.alert('Invalid Input', 'Enter a dose in mg.');
+    }
+
+    let updated;
+    if (editingSuppId) {
+      updated = supplements.map(s => s.id === editingSuppId ? { ...s, name, doseMg } : s);
+    } else {
+      updated = [
+        ...supplements,
+        { id: Date.now().toString() + Math.random().toString(), name, doseMg }
+      ];
+    }
+
+    setSupplements(updated);
+    saveData(STORAGE_KEYS.SUPPLEMENTS, updated);
+    closeSuppModal();
+  };
+
+  const handleDeleteSupplement = (id) => {
+    const performDelete = () => {
+      const updated = supplements.filter(s => s.id !== id);
+      setSupplements(updated);
+      saveData(STORAGE_KEYS.SUPPLEMENTS, updated);
+
+      const logCopy = { ...supplementLog };
+      Object.keys(logCopy).forEach((dateKey) => {
+        if (logCopy[dateKey]?.[id]) {
+          const day = { ...logCopy[dateKey] };
+          delete day[id];
+          logCopy[dateKey] = day;
+        }
+      });
+      setSupplementLog(logCopy);
+      saveData(STORAGE_KEYS.SUPPLEMENT_LOG, logCopy);
+      closeSuppModal();
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete this supplement?')) performDelete();
+    } else {
+      Alert.alert('Delete Supplement', 'Remove this supplement from your list?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: performDelete }
+      ]);
+    }
+  };
+
+  const handleToggleSupplementTaken = (id) => {
+    const dayLog = { ...(supplementLog[todayStr] || {}) };
+    if (dayLog[id]) {
+      delete dayLog[id];
+    } else {
+      dayLog[id] = true;
+    }
+    const updated = { ...supplementLog, [todayStr]: dayLog };
+    setSupplementLog(updated);
+    saveData(STORAGE_KEYS.SUPPLEMENT_LOG, updated);
+  };
+
+  const formatSuppDose = (doseMg) => {
+    if (doseMg == null) return '';
+    if (doseMg > 0 && doseMg < 1) {
+      const ug = Math.round(doseMg * 1000);
+      return `${ug}µg`;
+    }
+    const n = Number(doseMg);
+    return `${Number.isInteger(n) ? n : n}mg`;
+  };
+
   const filteredSuggestions = useMemo(() => {
     if (!exInput.trim()) return [];
     return combinedExercisePool.filter(item =>
@@ -1064,29 +1217,65 @@ export default function App() {
             </View>
 
             {todayPane === 'stats' ? (
-              <View style={styles.recoveryPanelCard}>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.recoveryPanelTitle}>Recovery</Text>
-                  <TouchableOpacity onPress={() => setRecoverySettingsVisible(true)}>
-                    <Text style={styles.recoveryDetailsLink}>Details</Text>
-                  </TouchableOpacity>
+              <>
+                <View style={styles.recoveryPanelCard}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.recoveryPanelTitle}>Recovery</Text>
+                    <TouchableOpacity onPress={() => setRecoverySettingsVisible(true)}>
+                      <Text style={styles.recoveryDetailsLink}>Details</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {recoveryMatrix.map((item) => (
+                    <View key={item.category} style={styles.recoveryLineRow}>
+                      <Text style={styles.recoveryLineCategory}>{item.category}</Text>
+                      <View style={styles.recoveryLineBarTrack}>
+                        <View style={[styles.recoveryLineBarFill, { width: `${item.progress * 100}%`, backgroundColor: item.color }]} />
+                      </View>
+                      <View style={styles.recoveryLineRightCol}>
+                        <Text style={[styles.recoveryLineStatus, { color: item.color }]}>{item.status}</Text>
+                        <Text style={styles.recoveryLineTime}>
+                          {item.hoursLeft <= 0 ? '0h left' : `${Math.ceil(item.hoursLeft)}h left`}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
                 </View>
 
-                {recoveryMatrix.map((item) => (
-                  <View key={item.category} style={styles.recoveryLineRow}>
-                    <Text style={styles.recoveryLineCategory}>{item.category}</Text>
-                    <View style={styles.recoveryLineBarTrack}>
-                      <View style={[styles.recoveryLineBarFill, { width: `${item.progress * 100}%`, backgroundColor: item.color }]} />
-                    </View>
-                    <View style={styles.recoveryLineRightCol}>
-                      <Text style={[styles.recoveryLineStatus, { color: item.color }]}>{item.status}</Text>
-                      <Text style={styles.recoveryLineTime}>
-                        {item.hoursLeft <= 0 ? '0h left' : `${Math.ceil(item.hoursLeft)}h left`}
-                      </Text>
-                    </View>
+                <View style={styles.supplementsCard}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.supplementsTitle}>Supplements</Text>
+                    <TouchableOpacity style={styles.suppAddBtn} onPress={openAddSupplementModal}>
+                      <Ionicons name="add" size={18} color="#4F8DFF" />
+                    </TouchableOpacity>
                   </View>
-                ))}
-              </View>
+
+                  {supplements.length === 0 ? (
+                    <Text style={styles.suppEmptyText}>No supplements yet. Tap + to add one.</Text>
+                  ) : (
+                    supplements.map((supp) => {
+                      const taken = !!supplementLog[todayStr]?.[supp.id];
+                      return (
+                        <View key={supp.id} style={styles.suppRow}>
+                          <TouchableOpacity
+                            style={[styles.suppCheck, taken && styles.suppCheckTaken]}
+                            onPress={() => handleToggleSupplementTaken(supp.id)}
+                          >
+                            {taken ? <Ionicons name="checkmark" size={14} color="#FFF" /> : null}
+                          </TouchableOpacity>
+                          <View style={styles.suppTextCol}>
+                            <Text style={styles.suppName}>{supp.name}</Text>
+                            <Text style={styles.suppDose}>{formatSuppDose(supp.doseMg)}</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => openEditSupplementModal(supp)} style={{ padding: 6 }}>
+                            <Ionicons name="pencil" size={16} color={THEME.textMuted} />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+              </>
             ) : isTodayCompleted ? (
               <View style={styles.completedBannerCard}>
                 <Ionicons name="checkmark-circle" size={44} color={THEME.success} style={{ marginBottom: 10 }} />
@@ -1552,6 +1741,83 @@ export default function App() {
             >
               <Text style={{ color: THEME.text, textAlign: 'center' }}>Done</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={suppModalVisible} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>{editingSuppId ? 'Edit Supplement' : 'Add Supplement'}</Text>
+              <TouchableOpacity onPress={closeSuppModal}>
+                <Ionicons name="close" size={22} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>Name:</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Creatine Monohydrate"
+              placeholderTextColor="#666"
+              value={suppNameInput}
+              onChangeText={(val) => {
+                setSuppNameInput(val);
+                setShowSuppSuggestions(true);
+              }}
+            />
+
+            {showSuppSuggestions && filteredSuppSuggestions.length > 0 && (
+              <View style={styles.suggestionsContainer}>
+                <ScrollView style={{ maxHeight: 140 }}>
+                  {filteredSuppSuggestions.map((item) => (
+                    <TouchableOpacity
+                      key={item.name}
+                      style={styles.suggestionItem}
+                      onPress={() => {
+                        setSuppNameInput(item.name);
+                        if (!suppDoseInput.trim() && item.doseMg != null) {
+                          setSuppDoseInput(String(item.doseMg));
+                        }
+                        setShowSuppSuggestions(false);
+                      }}
+                    >
+                      <Text style={{ color: THEME.text, fontSize: 13 }}>{item.name}</Text>
+                      <Text style={{ color: THEME.textMuted, fontSize: 11, marginTop: 2 }}>
+                        Suggested: {formatSuppDose(item.doseMg)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <Text style={styles.inputLabel}>Dose (mg):</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. 5000"
+              placeholderTextColor="#666"
+              keyboardType="decimal-pad"
+              value={suppDoseInput}
+              onChangeText={setSuppDoseInput}
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
+              {editingSuppId ? (
+                <TouchableOpacity
+                  style={[styles.modalBtn, { backgroundColor: 'rgba(239,68,68,0.2)', marginRight: 'auto' }]}
+                  onPress={() => handleDeleteSupplement(editingSuppId)}
+                >
+                  <Text style={{ color: '#EF4444', fontWeight: '700' }}>Delete</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight }]} onPress={closeSuppModal}>
+                <Text style={{ color: THEME.text }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.accent, marginLeft: 8 }]} onPress={handleSaveSupplement}>
+                <Text style={{ color: THEME.text, fontWeight: '700' }}>{editingSuppId ? 'Save' : 'Add'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -2138,6 +2404,65 @@ const styles = StyleSheet.create({
   recoverySettingSuffix: {
     color: THEME.textMuted,
     width: 12,
+  },
+  supplementsCard: {
+    backgroundColor: '#1D1D26',
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+  },
+  supplementsTitle: {
+    color: THEME.text,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  suppAddBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(79, 141, 255, 0.15)',
+  },
+  suppEmptyText: {
+    color: THEME.textMuted,
+    fontSize: 13,
+    marginTop: 14,
+    textAlign: 'center',
+  },
+  suppRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  suppCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#555',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  suppCheckTaken: {
+    backgroundColor: '#4F8DFF',
+    borderColor: '#4F8DFF',
+  },
+  suppTextCol: {
+    flex: 1,
+  },
+  suppName: {
+    color: THEME.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  suppDose: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginTop: 2,
   },
   scrollContainer: {
     padding: 16,
