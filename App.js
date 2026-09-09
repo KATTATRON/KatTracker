@@ -11,10 +11,19 @@ import {
   SafeAreaView,
   StatusBar,
   Platform,
-  Vibration
+  Vibration,
+  Image
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+
+let ImagePicker = null;
+try {
+  // Optional: install with `npx expo install expo-image-picker`
+  ImagePicker = require('expo-image-picker');
+} catch (e) {
+  ImagePicker = null;
+}
 
 // --- CONSTANTS & CONFIG ---
 const THEME = {
@@ -278,12 +287,34 @@ const STORAGE_KEYS = {
   SLEEP_LOG: '@kat_tracker_sleep_log_v1',
   WEIGHT_LOG: '@kat_tracker_weight_log_v1',
   PROTEIN_GOAL: '@kat_tracker_protein_goal_v1',
-  PROTEIN_LOG: '@kat_tracker_protein_log_v1'
+  PROTEIN_LOG: '@kat_tracker_protein_log_v1',
+  MONTHLY_PHOTOS: '@kat_tracker_monthly_photos_v1',
+  PHOTO_PROMPT_MONTH: '@kat_tracker_photo_prompt_month_v1'
 };
 
 const SLEEP_TARGET_HOURS = 8;
 const DEFAULT_PROTEIN_GOAL = 150;
+const MAX_MONTHLY_PHOTOS = 4;
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const getMonthKey = (date = new Date()) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+};
+
+const getPreviousMonthKey = (monthKey) => {
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  return getMonthKey(d);
+};
+
+const formatMonthLabel = (monthKey) => {
+  if (!monthKey) return '';
+  const [y, m] = monthKey.split('-').map(Number);
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${names[(m || 1) - 1]} ${y}`;
+};
 
 // --- UTILITY FUNCTIONS ---
 const getLocalDateString = (date = new Date()) => {
@@ -625,6 +656,15 @@ export default function App() {
   const [proteinLog, setProteinLog] = useState({}); // { date: grams }
   const [proteinInput, setProteinInput] = useState('');
 
+  const [monthlyPhotos, setMonthlyPhotos] = useState({}); // { 'YYYY-MM': { photos: [{id, uri}], savedAt } }
+  const [photoPromptMonth, setPhotoPromptMonth] = useState(null);
+  const [monthlyCompareVisible, setMonthlyCompareVisible] = useState(false);
+  const [monthlyCaptureVisible, setMonthlyCaptureVisible] = useState(false);
+  const [weeklyReportVisible, setWeeklyReportVisible] = useState(false);
+  const [albumVisible, setAlbumVisible] = useState(false);
+  const [compareMonthKey, setCompareMonthKey] = useState(null); // previous month being compared
+  const [captureMonthKey, setCaptureMonthKey] = useState(null);
+
   // Rest timer
   useEffect(() => {
     if (!timerActive) return undefined;
@@ -667,6 +707,8 @@ export default function App() {
       const storedWeightLog = await AsyncStorage.getItem(STORAGE_KEYS.WEIGHT_LOG);
       const storedProteinGoal = await AsyncStorage.getItem(STORAGE_KEYS.PROTEIN_GOAL);
       const storedProteinLog = await AsyncStorage.getItem(STORAGE_KEYS.PROTEIN_LOG);
+      const storedMonthlyPhotos = await AsyncStorage.getItem(STORAGE_KEYS.MONTHLY_PHOTOS);
+      const storedPhotoPromptMonth = await AsyncStorage.getItem(STORAGE_KEYS.PHOTO_PROMPT_MONTH);
 
       if (storedRoutines) setRoutines(JSON.parse(storedRoutines));
       if (storedSchedule) setSchedule(JSON.parse(storedSchedule));
@@ -704,6 +746,8 @@ export default function App() {
         const todayProtein = parsedProtein[getLocalDateString()];
         if (todayProtein != null) setProteinInput(String(todayProtein));
       }
+      if (storedMonthlyPhotos) setMonthlyPhotos(JSON.parse(storedMonthlyPhotos));
+      if (storedPhotoPromptMonth) setPhotoPromptMonth(JSON.parse(storedPhotoPromptMonth));
     } catch (e) {
       Alert.alert('Error', 'Could not load your saved data.');
     } finally {
@@ -891,6 +935,83 @@ export default function App() {
 
     return { points, logged, latest, first, delta, maxVal, minVal, range };
   }, [weightLog]);
+
+  const weeklyReport = useMemo(() => {
+    const weekStart = getWeekStartDate();
+    const weekStartStr = getLocalDateString(weekStart);
+    const dates = [];
+    for (let i = 0; i < 7; i += 1) {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      dates.push(getLocalDateString(d));
+    }
+
+    const setsByMuscle = RECOVERY_CATEGORIES.reduce((acc, c) => {
+      acc[c] = 0;
+      return acc;
+    }, {});
+    let workoutDays = 0;
+    let totalSessions = 0;
+    let totalExercises = 0;
+
+    dates.forEach((dateStr) => {
+      const sessions = getSessionsForDate(history, dateStr);
+      if (sessions.length > 0) workoutDays += 1;
+      totalSessions += sessions.length;
+      sessions.forEach((session) => {
+        (session.exercises || []).forEach((ex) => {
+          totalExercises += 1;
+          const category = resolveExerciseCategory(ex.name);
+          if (category && Object.prototype.hasOwnProperty.call(setsByMuscle, category)) {
+            setsByMuscle[category] += Array.isArray(ex.sets) ? ex.sets.length : 0;
+          }
+        });
+      });
+    });
+
+    const totalSets = Object.values(setsByMuscle).reduce((a, b) => a + b, 0);
+
+    const sleepHours = dates.map((dateStr) => {
+      const entry = sleepLog[dateStr];
+      if (!entry) return null;
+      return calcSleepHours(parseTimeToMinutes(entry.bed), parseTimeToMinutes(entry.wake));
+    }).filter((h) => h != null);
+    const avgSleep = sleepHours.length
+      ? sleepHours.reduce((a, b) => a + b, 0) / sleepHours.length
+      : null;
+
+    const proteinDays = dates
+      .map((d) => (proteinLog[d] != null ? Number(proteinLog[d]) : null))
+      .filter((v) => v != null);
+    const avgProtein = proteinDays.length
+      ? proteinDays.reduce((a, b) => a + b, 0) / proteinDays.length
+      : null;
+    const proteinGoalHits = proteinDays.filter((v) => v >= proteinGoal).length;
+
+    const weights = dates
+      .map((d) => (weightLog[d] != null ? Number(weightLog[d]) : null))
+      .filter((v) => v != null);
+    const weightDelta = weights.length >= 2 ? weights[weights.length - 1] - weights[0] : null;
+
+    const weekEnd = dates[dates.length - 1];
+
+    return {
+      weekStartStr,
+      weekEnd,
+      workoutDays,
+      totalSessions,
+      totalExercises,
+      totalSets,
+      setsByMuscle,
+      avgSleep,
+      sleepNights: sleepHours.length,
+      avgProtein,
+      proteinGoalHits,
+      proteinDays: proteinDays.length,
+      weightDelta,
+      weightLogs: weights.length
+    };
+  }, [history, sleepLog, proteinLog, proteinGoal, weightLog]);
 
   const getPreviousPerformance = useCallback((exerciseName, currentDateStr) => {
     const sortedDates = Object.keys(history)
@@ -1587,6 +1708,141 @@ export default function App() {
     saveData(STORAGE_KEYS.PROTEIN_LOG, updated);
   };
 
+  const markPhotoPromptSeen = async (monthKey) => {
+    setPhotoPromptMonth(monthKey);
+    saveData(STORAGE_KEYS.PHOTO_PROMPT_MONTH, monthKey);
+  };
+
+  const openMonthlyCapture = (monthKey = getMonthKey()) => {
+    setCaptureMonthKey(monthKey);
+    setMonthlyCaptureVisible(true);
+  };
+
+  const openMonthlyCompare = (prevKey) => {
+    setCompareMonthKey(prevKey);
+    setMonthlyCompareVisible(true);
+  };
+
+  const pickMonthlyPhoto = async (fromCamera) => {
+    if (!ImagePicker) {
+      return Alert.alert(
+        'Camera unavailable',
+        'Install expo-image-picker in your Expo project:\nnpx expo install expo-image-picker'
+      );
+    }
+
+    const monthKey = captureMonthKey || getMonthKey();
+    const existing = monthlyPhotos[monthKey]?.photos || [];
+    if (existing.length >= MAX_MONTHLY_PHOTOS) {
+      return Alert.alert('Limit reached', `Max ${MAX_MONTHLY_PHOTOS} photos per month.`);
+    }
+
+    try {
+      if (fromCamera) {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) return Alert.alert('Permission needed', 'Camera access is required.');
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) return Alert.alert('Permission needed', 'Photo library access is required.');
+      }
+
+      const result = fromCamera
+        ? await ImagePicker.launchCameraAsync({
+          quality: 0.45,
+          base64: true,
+          allowsEditing: true,
+          aspect: [3, 4]
+        })
+        : await ImagePicker.launchImageLibraryAsync({
+          quality: 0.45,
+          base64: true,
+          allowsEditing: true,
+          aspect: [3, 4],
+          mediaTypes: ImagePicker.MediaTypeOptions?.Images || 'images'
+        });
+
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+      const uri = asset.base64
+        ? `data:image/jpeg;base64,${asset.base64}`
+        : asset.uri;
+
+      const photo = {
+        id: Date.now().toString() + Math.random().toString(),
+        uri
+      };
+
+      const updated = {
+        ...monthlyPhotos,
+        [monthKey]: {
+          photos: [...existing, photo],
+          savedAt: Date.now()
+        }
+      };
+      setMonthlyPhotos(updated);
+      saveData(STORAGE_KEYS.MONTHLY_PHOTOS, updated);
+    } catch (e) {
+      Alert.alert('Error', 'Could not add photo. Make sure expo-image-picker is installed.');
+    }
+  };
+
+  const removeMonthlyPhoto = (monthKey, photoId) => {
+    const entry = monthlyPhotos[monthKey];
+    if (!entry) return;
+    const photos = (entry.photos || []).filter(p => p.id !== photoId);
+    const updated = { ...monthlyPhotos };
+    if (photos.length === 0) {
+      delete updated[monthKey];
+    } else {
+      updated[monthKey] = { ...entry, photos };
+    }
+    setMonthlyPhotos(updated);
+    saveData(STORAGE_KEYS.MONTHLY_PHOTOS, updated);
+  };
+
+  const runFirstOfMonthPhotoFlow = () => {
+    const now = new Date();
+    if (now.getDate() !== 1) return;
+
+    const thisMonth = getMonthKey(now);
+    if (photoPromptMonth === thisMonth) return;
+
+    const prevMonth = getPreviousMonthKey(thisMonth);
+    const hasPrev = (monthlyPhotos[prevMonth]?.photos || []).length > 0;
+    const hasThis = (monthlyPhotos[thisMonth]?.photos || []).length > 0;
+
+    markPhotoPromptSeen(thisMonth);
+
+    if (hasPrev) {
+      openMonthlyCompare(prevMonth);
+      Alert.alert(
+        'Monthly check-in',
+        hasThis
+          ? 'Compare last month, or add more photos for this month.'
+          : 'Compare last month, then take this month\'s progress photos.',
+        [
+          { text: 'Later', style: 'cancel' },
+          ...(!hasThis ? [{ text: 'Take photos', onPress: () => openMonthlyCapture(thisMonth) }] : [])
+        ]
+      );
+    } else if (!hasThis) {
+      Alert.alert(
+        'Monthly progress photos',
+        'It\'s the 1st — take a few progress pics to compare next month.',
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Take photos', onPress: () => openMonthlyCapture(thisMonth) }
+        ]
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (loading) return undefined;
+    const t = setTimeout(() => runFirstOfMonthPhotoFlow(), 600);
+    return () => clearTimeout(t);
+  }, [loading, photoPromptMonth, monthlyPhotos]);
+
   const formatSuppDose = (doseMg) => {
     if (doseMg == null || Number.isNaN(doseMg)) return '';
     if (doseMg > 0 && doseMg < 1) {
@@ -1745,6 +2001,51 @@ export default function App() {
                         ) : null}
                       </View>
                     </View>
+                  </View>
+                </View>
+
+                <View style={styles.reportCard}>
+                  <View style={styles.rowBetween}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.reportCardTitle}>Weekly Report</Text>
+                      <Text style={styles.reportCardHint}>
+                        {weeklyReport.weekStartStr} → {weeklyReport.weekEnd}
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={styles.smallAccentBtn} onPress={() => setWeeklyReportVisible(true)}>
+                      <Text style={styles.smallAccentBtnText}>Open</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.reportPreviewLine}>
+                    {weeklyReport.workoutDays} gym days · {weeklyReport.totalSets} sets · sleep {weeklyReport.avgSleep != null ? formatDurationHours(weeklyReport.avgSleep) : '--'}
+                  </Text>
+                </View>
+
+                <View style={styles.reportCard}>
+                  <View style={styles.rowBetween}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.reportCardTitle}>Monthly Photos</Text>
+                      <Text style={styles.reportCardHint}>
+                        {formatMonthLabel(getMonthKey())}: {(monthlyPhotos[getMonthKey()]?.photos || []).length}/{MAX_MONTHLY_PHOTOS} pics
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={styles.smallAccentBtn} onPress={() => openMonthlyCapture(getMonthKey())}>
+                      <Ionicons name="camera" size={14} color="#FFF" />
+                      <Text style={styles.smallAccentBtnText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                    <TouchableOpacity style={[styles.proteinQuickBtn, { marginRight: 8 }]} onPress={() => setAlbumVisible(true)}>
+                      <Text style={styles.proteinQuickBtnText}>Album</Text>
+                    </TouchableOpacity>
+                    {(monthlyPhotos[getPreviousMonthKey(getMonthKey())]?.photos || []).length > 0 ? (
+                      <TouchableOpacity
+                        style={styles.proteinQuickBtn}
+                        onPress={() => openMonthlyCompare(getPreviousMonthKey(getMonthKey()))}
+                      >
+                        <Text style={styles.proteinQuickBtnText}>Compare</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </View>
 
@@ -3128,6 +3429,254 @@ export default function App() {
         </View>
       </Modal>
 
+      <Modal visible={weeklyReportVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '85%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Weekly Report</Text>
+              <TouchableOpacity onPress={() => setWeeklyReportVisible(false)}>
+                <Ionicons name="close" size={22} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.cardMutedText}>
+              {weeklyReport.weekStartStr} → {weeklyReport.weekEnd}
+            </Text>
+
+            <ScrollView style={{ marginTop: 12 }}>
+              <View style={styles.reportStatGrid}>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Gym days</Text>
+                  <Text style={styles.reportStatValue}>{weeklyReport.workoutDays}/7</Text>
+                </View>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Sessions</Text>
+                  <Text style={styles.reportStatValue}>{weeklyReport.totalSessions}</Text>
+                </View>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Total sets</Text>
+                  <Text style={styles.reportStatValue}>{weeklyReport.totalSets}</Text>
+                </View>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Exercises</Text>
+                  <Text style={styles.reportStatValue}>{weeklyReport.totalExercises}</Text>
+                </View>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Avg sleep</Text>
+                  <Text style={styles.reportStatValue}>
+                    {weeklyReport.avgSleep != null ? formatDurationHours(weeklyReport.avgSleep) : '--'}
+                  </Text>
+                </View>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Sleep nights</Text>
+                  <Text style={styles.reportStatValue}>{weeklyReport.sleepNights}</Text>
+                </View>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Avg protein</Text>
+                  <Text style={styles.reportStatValue}>
+                    {weeklyReport.avgProtein != null ? `${Math.round(weeklyReport.avgProtein)}g` : '--'}
+                  </Text>
+                </View>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Protein goals</Text>
+                  <Text style={styles.reportStatValue}>
+                    {weeklyReport.proteinGoalHits}/{weeklyReport.proteinDays}
+                  </Text>
+                </View>
+                <View style={[styles.reportStatCell, { width: '100%' }]}>
+                  <Text style={styles.reportStatLabel}>Weight change</Text>
+                  <Text style={styles.reportStatValue}>
+                    {weeklyReport.weightDelta == null
+                      ? '--'
+                      : `${weeklyReport.weightDelta > 0 ? '+' : ''}${String(Math.round(weeklyReport.weightDelta * 10) / 10).replace('.', ',')} kg`}
+                  </Text>
+                </View>
+              </View>
+
+              <Text style={[styles.chartSectionLabel, { marginTop: 8 }]}>SETS BY MUSCLE</Text>
+              {RECOVERY_CATEGORIES.map((cat) => {
+                const count = weeklyReport.setsByMuscle[cat] || 0;
+                const max = Math.max(1, weeklyReport.totalSets);
+                return (
+                  <View key={cat} style={styles.weeklySetsRow}>
+                    <Text style={styles.weeklySetsCategory}>{cat}</Text>
+                    <View style={styles.weeklySetsBarTrack}>
+                      <View
+                        style={[
+                          styles.weeklySetsBarFill,
+                          {
+                            width: `${(count / max) * 100}%`,
+                            backgroundColor: count > 0 ? '#22C55E' : 'transparent'
+                          }
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.weeklySetsCount}>{count}</Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight, marginTop: 12 }]}
+              onPress={() => setWeeklyReportVisible(false)}
+            >
+              <Text style={{ color: THEME.text, textAlign: 'center' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={monthlyCaptureVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '85%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>
+                Photos · {formatMonthLabel(captureMonthKey || getMonthKey())}
+              </Text>
+              <TouchableOpacity onPress={() => setMonthlyCaptureVisible(false)}>
+                <Ionicons name="close" size={22} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.cardMutedText}>
+              Take up to {MAX_MONTHLY_PHOTOS} progress pics. Next month on the 1st you'll compare.
+            </Text>
+
+            <View style={{ flexDirection: 'row', marginTop: 12, marginBottom: 10 }}>
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 1, marginRight: 8 }]}
+                onPress={() => pickMonthlyPhoto(true)}
+              >
+                <Text style={styles.primaryButtonText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 1, backgroundColor: THEME.surfaceLight }]}
+                onPress={() => pickMonthlyPhoto(false)}
+              >
+                <Text style={[styles.primaryButtonText, { color: THEME.text }]}>Gallery</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {(monthlyPhotos[captureMonthKey || getMonthKey()]?.photos || []).map((photo) => (
+                <View key={photo.id} style={styles.photoThumbWrap}>
+                  <Image source={{ uri: photo.uri }} style={styles.photoThumb} />
+                  <TouchableOpacity
+                    style={styles.photoDeleteBtn}
+                    onPress={() => removeMonthlyPhoto(captureMonthKey || getMonthKey(), photo.id)}
+                  >
+                    <Ionicons name="trash" size={14} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: THEME.accent, marginTop: 12 }]}
+              onPress={() => setMonthlyCaptureVisible(false)}
+            >
+              <Text style={{ color: '#FFF', textAlign: 'center', fontWeight: '700' }}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={monthlyCompareVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Compare</Text>
+              <TouchableOpacity onPress={() => setMonthlyCompareVisible(false)}>
+                <Ionicons name="close" size={22} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView>
+              <Text style={styles.chartSectionLabel}>
+                LAST MONTH · {formatMonthLabel(compareMonthKey)}
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+                {(monthlyPhotos[compareMonthKey]?.photos || []).map((photo) => (
+                  <Image key={photo.id} source={{ uri: photo.uri }} style={styles.photoCompare} />
+                ))}
+                {(monthlyPhotos[compareMonthKey]?.photos || []).length === 0 ? (
+                  <Text style={{ color: THEME.textMuted }}>No photos</Text>
+                ) : null}
+              </ScrollView>
+
+              <Text style={styles.chartSectionLabel}>
+                THIS MONTH · {formatMonthLabel(getMonthKey())}
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 8 }}>
+                {(monthlyPhotos[getMonthKey()]?.photos || []).map((photo) => (
+                  <Image key={photo.id} source={{ uri: photo.uri }} style={styles.photoCompare} />
+                ))}
+                {(monthlyPhotos[getMonthKey()]?.photos || []).length === 0 ? (
+                  <Text style={{ color: THEME.textMuted }}>No photos yet — tap Take photos</Text>
+                ) : null}
+              </ScrollView>
+            </ScrollView>
+
+            <View style={{ flexDirection: 'row', marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 1, marginRight: 8, backgroundColor: THEME.surfaceLight }]}
+                onPress={() => setMonthlyCompareVisible(false)}
+              >
+                <Text style={[styles.primaryButtonText, { color: THEME.text }]}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 1 }]}
+                onPress={() => {
+                  setMonthlyCompareVisible(false);
+                  openMonthlyCapture(getMonthKey());
+                }}
+              >
+                <Text style={styles.primaryButtonText}>Take photos</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={albumVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '85%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Photo Album</Text>
+              <TouchableOpacity onPress={() => setAlbumVisible(false)}>
+                <Ionicons name="close" size={22} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              {Object.keys(monthlyPhotos).sort((a, b) => (a < b ? 1 : -1)).length === 0 ? (
+                <Text style={{ color: THEME.textMuted }}>No months saved yet.</Text>
+              ) : (
+                Object.keys(monthlyPhotos).sort((a, b) => (a < b ? 1 : -1)).map((monthKey) => (
+                  <View key={monthKey} style={{ marginBottom: 16 }}>
+                    <View style={styles.rowBetween}>
+                      <Text style={styles.cardTitle}>{formatMonthLabel(monthKey)}</Text>
+                      <TouchableOpacity onPress={() => openMonthlyCapture(monthKey)}>
+                        <Text style={{ color: THEME.accent, fontWeight: '700' }}>Edit</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                      {(monthlyPhotos[monthKey]?.photos || []).map((photo) => (
+                        <Image key={photo.id} source={{ uri: photo.uri }} style={styles.photoThumb} />
+                      ))}
+                    </ScrollView>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight, marginTop: 12 }]}
+              onPress={() => setAlbumVisible(false)}
+            >
+              <Text style={{ color: THEME.text, textAlign: 'center' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.tabBar}>
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('today')}>
           <Ionicons name="today" size={20} color={currentTab === 'today' ? THEME.accent : THEME.textMuted} />
@@ -3407,6 +3956,78 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#2A2A35',
+  },
+  reportCard: {
+    backgroundColor: '#1D1D26',
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2A2A35',
+  },
+  reportCardTitle: {
+    color: THEME.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  reportCardHint: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  reportPreviewLine: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    marginTop: 10,
+  },
+  reportStatGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  reportStatCell: {
+    width: '50%',
+    marginBottom: 12,
+    paddingRight: 8,
+  },
+  reportStatLabel: {
+    color: THEME.textMuted,
+    fontSize: 11,
+  },
+  reportStatValue: {
+    color: THEME.text,
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  photoThumbWrap: {
+    marginRight: 10,
+    position: 'relative',
+  },
+  photoThumb: {
+    width: 92,
+    height: 122,
+    borderRadius: 10,
+    backgroundColor: THEME.surfaceLight,
+    marginRight: 8,
+  },
+  photoCompare: {
+    width: 140,
+    height: 190,
+    borderRadius: 12,
+    backgroundColor: THEME.surfaceLight,
+    marginRight: 10,
+  },
+  photoDeleteBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   motivationTitle: {
     color: THEME.text,
