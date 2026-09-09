@@ -311,6 +311,7 @@ function ExerciseSetLogger({
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('today');
+  const [historyPane, setHistoryPane] = useState('log'); // 'log' | 'prs'
   const [routines, setRoutines] = useState([]);
   const [schedule, setSchedule] = useState({
     Monday: null, Tuesday: null, Wednesday: null, Thursday: null, Friday: null, Saturday: null, Sunday: null
@@ -978,16 +979,7 @@ export default function App() {
           <Ionicons name="flash" size={26} color={THEME.accent} style={{ marginRight: 6 }} />
           <Text style={styles.headerTitle}>KatTracker</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity
-            style={styles.lightningBtn}
-            onPress={handleStartSpontaneousSession}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="flash-sharp" size={20} color="#FFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerSubtitle}>{todayStr}</Text>
-        </View>
+        <Text style={styles.headerSubtitle}>{todayStr}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
@@ -1172,6 +1164,15 @@ export default function App() {
                     )}
                   </View>
                 )}
+
+                <TouchableOpacity
+                  style={styles.spontaneousLaunchBtn}
+                  onPress={handleStartSpontaneousSession}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="flash-sharp" size={18} color="#FFF" style={{ marginRight: 8 }} />
+                  <Text style={styles.spontaneousLaunchBtnText}>Start Spontaneous Session</Text>
+                </TouchableOpacity>
               </>
             )}
           </View>
@@ -1250,102 +1251,127 @@ export default function App() {
 
         {currentTab === 'history' && (
           <View>
-            <Text style={styles.viewTitle}>History</Text>
-
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Activity Heatmap</Text>
-              <Text style={styles.cardMutedText}>Last 15 weeks</Text>
-
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
-                <View style={{ flexDirection: 'row' }}>
-                  {generateHeatmapDates().map((week, wIdx) => (
-                    <View key={wIdx} style={{ marginRight: 4 }}>
-                      {week.map((dateStr) => {
-                        const historyItem = history[dateStr];
-                        const isLogged = !!historyItem;
-                        const cellColor = isLogged ? (historyItem.color || THEME.success) : THEME.surfaceLight;
-                        return (
-                          <TouchableOpacity
-                            key={dateStr}
-                            style={[
-                              styles.heatmapCell,
-                              { backgroundColor: cellColor }
-                            ]}
-                            onPress={() => {
-                              setSelectedHistoryDate(dateStr);
-                              setHistoryModalVisible(true);
-                            }}
-                          />
-                        );
-                      })}
-                    </View>
-                  ))}
-                </View>
-              </ScrollView>
+            <View style={styles.rowBetween}>
+              <Text style={styles.viewTitle}>History</Text>
             </View>
 
-            <Text style={[styles.cardTitle, { marginTop: 16, marginBottom: 8 }]}>Workout Log</Text>
-            {Object.keys(history).length === 0 ? (
-              <Text style={{ color: THEME.textMuted }}>No history yet.</Text>
-            ) : (
-              Object.keys(history).sort((a, b) => (a < b ? 1 : -1)).map(dateKey => {
-                const item = history[dateKey];
-                return (
-                  <TouchableOpacity
-                    key={dateKey}
-                    style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.color || THEME.accent }]}
-                    onPress={() => {
-                      setSelectedHistoryDate(dateKey);
-                      setHistoryModalVisible(true);
-                    }}
-                  >
-                    <View style={styles.rowBetween}>
-                      <Text style={{ color: THEME.text, fontWeight: '700' }}>{dateKey}</Text>
-                      <Text style={{ color: item.color || THEME.accent, fontWeight: '700' }}>{item.routineName}</Text>
-                    </View>
-                    <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>
-                      {item.exercises ? item.exercises.length : 0} Exercises
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {currentTab === 'prs' && (
-          <View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.viewTitle}>Personal Records</Text>
-              <TouchableOpacity style={styles.smallAccentBtn} onPress={() => setPrModalVisible(true)}>
-                <Ionicons name="add-sharp" size={18} color="#FFF" />
-                <Text style={styles.smallAccentBtnText}>Add PR</Text>
+            <View style={styles.historyPaneRow}>
+              <TouchableOpacity
+                style={[styles.historyPaneBtn, historyPane === 'log' && styles.historyPaneBtnActive]}
+                onPress={() => setHistoryPane('log')}
+              >
+                <Ionicons name="stats-chart" size={16} color={historyPane === 'log' ? '#FFF' : THEME.textMuted} />
+                <Text style={[styles.historyPaneBtnText, historyPane === 'log' && styles.historyPaneBtnTextActive]}>
+                  Workouts
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.historyPaneBtn, historyPane === 'prs' && styles.historyPaneBtnActive]}
+                onPress={() => setHistoryPane('prs')}
+              >
+                <Ionicons name="trophy" size={16} color={historyPane === 'prs' ? '#FFF' : THEME.textMuted} />
+                <Text style={[styles.historyPaneBtnText, historyPane === 'prs' && styles.historyPaneBtnTextActive]}>
+                  PRs
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {prs.length === 0 ? (
-              <View style={styles.card}>
-                <Text style={{ color: THEME.textMuted, textAlign: 'center' }}>No PRs yet. Log your first max lift.</Text>
-              </View>
-            ) : (
-              prs.map((pr) => (
-                <View key={pr.id} style={styles.card}>
-                  <View style={styles.rowBetween}>
-                    <View>
-                      <Text style={styles.cardTitle}>{pr.exercise}</Text>
-                      <Text style={styles.cardMutedText}>Logged on {pr.date}</Text>
+            {historyPane === 'log' ? (
+              <>
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>Activity Heatmap</Text>
+                  <Text style={styles.cardMutedText}>Last 15 weeks</Text>
+
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
+                    <View style={{ flexDirection: 'row' }}>
+                      {generateHeatmapDates().map((week, wIdx) => (
+                        <View key={wIdx} style={{ marginRight: 4 }}>
+                          {week.map((dateStr) => {
+                            const historyItem = history[dateStr];
+                            const isLogged = !!historyItem;
+                            const cellColor = isLogged ? (historyItem.color || THEME.success) : THEME.surfaceLight;
+                            return (
+                              <TouchableOpacity
+                                key={dateStr}
+                                style={[
+                                  styles.heatmapCell,
+                                  { backgroundColor: cellColor }
+                                ]}
+                                onPress={() => {
+                                  setSelectedHistoryDate(dateStr);
+                                  setHistoryModalVisible(true);
+                                }}
+                              />
+                            );
+                          })}
+                        </View>
+                      ))}
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={{ color: THEME.accent, fontSize: 20, fontWeight: '800', marginRight: 12 }}>
-                        {pr.weight} KG
-                      </Text>
-                      <TouchableOpacity onPress={() => handleDeletePR(pr.id)}>
-                        <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                  </ScrollView>
                 </View>
-              ))
+
+                <Text style={[styles.cardTitle, { marginTop: 16, marginBottom: 8 }]}>Workout Log</Text>
+                {Object.keys(history).length === 0 ? (
+                  <Text style={{ color: THEME.textMuted }}>No history yet.</Text>
+                ) : (
+                  Object.keys(history).sort((a, b) => (a < b ? 1 : -1)).map(dateKey => {
+                    const item = history[dateKey];
+                    return (
+                      <TouchableOpacity
+                        key={dateKey}
+                        style={[styles.card, { borderLeftWidth: 4, borderLeftColor: item.color || THEME.accent }]}
+                        onPress={() => {
+                          setSelectedHistoryDate(dateKey);
+                          setHistoryModalVisible(true);
+                        }}
+                      >
+                        <View style={styles.rowBetween}>
+                          <Text style={{ color: THEME.text, fontWeight: '700' }}>{dateKey}</Text>
+                          <Text style={{ color: item.color || THEME.accent, fontWeight: '700' }}>{item.routineName}</Text>
+                        </View>
+                        <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>
+                          {item.exercises ? item.exercises.length : 0} Exercises
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </>
+            ) : (
+              <>
+                <View style={styles.rowBetween}>
+                  <Text style={[styles.cardTitle, { marginBottom: 8 }]}>Personal Records</Text>
+                  <TouchableOpacity style={styles.smallAccentBtn} onPress={() => setPrModalVisible(true)}>
+                    <Ionicons name="add-sharp" size={18} color="#FFF" />
+                    <Text style={styles.smallAccentBtnText}>Add PR</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {prs.length === 0 ? (
+                  <View style={styles.card}>
+                    <Text style={{ color: THEME.textMuted, textAlign: 'center' }}>No PRs yet. Log your first max lift.</Text>
+                  </View>
+                ) : (
+                  prs.map((pr) => (
+                    <View key={pr.id} style={styles.card}>
+                      <View style={styles.rowBetween}>
+                        <View>
+                          <Text style={styles.cardTitle}>{pr.exercise}</Text>
+                          <Text style={styles.cardMutedText}>Logged on {pr.date}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={{ color: THEME.accent, fontSize: 20, fontWeight: '800', marginRight: 12 }}>
+                            {pr.weight} KG
+                          </Text>
+                          <TouchableOpacity onPress={() => handleDeletePR(pr.id)}>
+                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </>
             )}
           </View>
         )}
@@ -1789,14 +1815,15 @@ export default function App() {
           <Text style={[styles.tabLabel, currentTab === 'schedule' && styles.tabLabelActive]}>Schedule</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('history')}>
+        <TouchableOpacity
+          style={styles.tabItem}
+          onPress={() => {
+            setCurrentTab('history');
+            setHistoryPane('log');
+          }}
+        >
           <Ionicons name="stats-chart" size={20} color={currentTab === 'history' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'history' && styles.tabLabelActive]}>History</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('prs')}>
-          <Ionicons name="trophy" size={20} color={currentTab === 'prs' ? THEME.accent : THEME.textMuted} />
-          <Text style={[styles.tabLabel, currentTab === 'prs' && styles.tabLabelActive]}>PRs</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('addictions')}>
@@ -1836,14 +1863,49 @@ const styles = StyleSheet.create({
     color: THEME.textMuted,
     fontSize: 12,
   },
-  lightningBtn: {
-    backgroundColor: THEME.accent,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    justifyContent: 'center',
+  spontaneousLaunchBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 10,
+    justifyContent: 'center',
+    backgroundColor: THEME.accent,
+    borderRadius: 10,
+    paddingVertical: 14,
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  spontaneousLaunchBtnText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  historyPaneRow: {
+    flexDirection: 'row',
+    marginBottom: 14,
+  },
+  historyPaneBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: THEME.surface,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginRight: 8,
+  },
+  historyPaneBtnActive: {
+    backgroundColor: THEME.accent,
+    borderColor: THEME.accent,
+  },
+  historyPaneBtnText: {
+    color: THEME.textMuted,
+    fontWeight: '600',
+    fontSize: 13,
+    marginLeft: 6,
+  },
+  historyPaneBtnTextActive: {
+    color: '#FFF',
   },
   scrollContainer: {
     padding: 16,
