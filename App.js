@@ -484,6 +484,28 @@ const formatTimerString = (totalSeconds) => {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
 
+const formatWorkoutClock = (totalSeconds) => {
+  const secs = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hours = Math.floor(secs / 3600);
+  const mins = Math.floor((secs % 3600) / 60);
+  const rem = secs % 60;
+  if (hours > 0) {
+    return `${hours}:${mins < 10 ? '0' : ''}${mins}:${rem < 10 ? '0' : ''}${rem}`;
+  }
+  return `${mins}:${rem < 10 ? '0' : ''}${rem}`;
+};
+
+const formatWorkoutDurationLabel = (totalSeconds) => {
+  if (totalSeconds == null || Number.isNaN(Number(totalSeconds))) return null;
+  const secs = Math.max(0, Math.floor(Number(totalSeconds)));
+  if (secs <= 0) return null;
+  const hours = Math.floor(secs / 3600);
+  const mins = Math.floor((secs % 3600) / 60);
+  if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  if (mins > 0) return `${mins} min`;
+  return `${secs}s`;
+};
+
 const getSessionsForDate = (historyObj, dateStr) => {
   const dayEntry = historyObj?.[dateStr];
   if (!dayEntry) return [];
@@ -612,10 +634,12 @@ export default function App() {
   const [editingSessionIndex, setEditingSessionIndex] = useState(null);
   const [editingHistoryDate, setEditingHistoryDate] = useState(null);
   const [workoutNote, setWorkoutNote] = useState('');
+  const [sessionExtraExercises, setSessionExtraExercises] = useState([]);
+  const [workoutStartedAt, setWorkoutStartedAt] = useState(null);
+  const [workoutElapsedSeconds, setWorkoutElapsedSeconds] = useState(0);
 
   const [isSpontaneousMode, setIsSpontaneousMode] = useState(false);
   const [spontaneousExercises, setSpontaneousExercises] = useState([]);
-  const [spontaneousModalVisible, setSpontaneousModalVisible] = useState(false);
   const [spontaneousExInput, setSpontaneousExInput] = useState('');
   const [spontaneousSetsInput, setSpontaneousSetsInput] = useState(String(DEFAULT_SETS));
   const [showSpontaneousSuggestions, setShowSpontaneousSuggestions] = useState(false);
@@ -697,6 +721,16 @@ export default function App() {
     }, 1000);
     return () => clearTimeout(id);
   }, [timerActive, timerSeconds]);
+
+  useEffect(() => {
+    if (!workoutStartedAt) return undefined;
+    const tick = () => {
+      setWorkoutElapsedSeconds(Math.max(0, Math.floor((Date.now() - workoutStartedAt) / 1000)));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [workoutStartedAt]);
 
   useEffect(() => {
     loadData();
@@ -963,12 +997,14 @@ export default function App() {
     let workoutDays = 0;
     let totalSessions = 0;
     let totalExercises = 0;
+    let totalWorkoutSeconds = 0;
 
     dates.forEach((dateStr) => {
       const sessions = getSessionsForDate(history, dateStr);
       if (sessions.length > 0) workoutDays += 1;
       totalSessions += sessions.length;
       sessions.forEach((session) => {
+        totalWorkoutSeconds += Math.max(0, parseInt(session.durationSeconds, 10) || 0);
         (session.exercises || []).forEach((ex) => {
           totalExercises += 1;
           const category = resolveExerciseCategory(ex.name);
@@ -1012,6 +1048,7 @@ export default function App() {
       totalSessions,
       totalExercises,
       totalSets,
+      totalWorkoutSeconds,
       setsByMuscle,
       avgSleep,
       sleepNights: sleepHours.length,
@@ -1154,6 +1191,24 @@ export default function App() {
     setShowSuggestions(false);
   };
 
+  const beginWorkoutClock = (resumeFrom = 0) => {
+    const base = Math.max(0, Math.floor(Number(resumeFrom) || 0));
+    setWorkoutElapsedSeconds(base);
+    setWorkoutStartedAt(Date.now() - (base * 1000));
+  };
+
+  const haltWorkoutClock = (reset = true) => {
+    setWorkoutStartedAt(null);
+    if (reset) setWorkoutElapsedSeconds(0);
+  };
+
+  const resetLiveSessionExtras = () => {
+    setSessionExtraExercises([]);
+    setSpontaneousExInput('');
+    setSpontaneousSetsInput(String(DEFAULT_SETS));
+    setShowSpontaneousSuggestions(false);
+  };
+
   const handleStartSpontaneousSession = () => {
     setIsEditingSavedWorkout(false);
     setEditingSessionIndex(null);
@@ -1163,7 +1218,9 @@ export default function App() {
     setSpontaneousExercises([]);
     setActiveWorkoutLogs({});
     setWorkoutNote('');
+    resetLiveSessionExtras();
     setIsGymDayChecked(true);
+    beginWorkoutClock(0);
     setCurrentTab('today');
     setTodayPane('workout');
   };
@@ -1176,14 +1233,16 @@ export default function App() {
     setSpontaneousExercises([]);
     setWorkoutNote('');
     setActiveWorkoutLogs({});
+    resetLiveSessionExtras();
     setImpromptuRoutine(routine);
     setIsGymDayChecked(true);
+    beginWorkoutClock(0);
     setTodayPane('workout');
     setCurrentTab('today');
   };
 
-  const handleAddSpontaneousExercise = () => {
-    const exName = spontaneousExInput.trim();
+  const handleAddExerciseToActiveWorkout = (nameOverride) => {
+    const exName = (typeof nameOverride === 'string' ? nameOverride : spontaneousExInput).trim();
     if (!exName) return;
 
     const setsCount = parseInt(spontaneousSetsInput, 10) || DEFAULT_SETS;
@@ -1201,7 +1260,12 @@ export default function App() {
       saveData(STORAGE_KEYS.CUSTOM_EX_POOL, updatedCustomPool);
     }
 
-    setSpontaneousExercises([...spontaneousExercises, newEx]);
+    if (isSpontaneousMode) {
+      setSpontaneousExercises(prev => [...prev, newEx]);
+    } else {
+      setSessionExtraExercises(prev => [...prev, newEx]);
+    }
+
     setActiveWorkoutLogs(prev => ({
       ...prev,
       [newExId]: buildEmptySets(setsCount)
@@ -1210,7 +1274,6 @@ export default function App() {
     setSpontaneousExInput('');
     setSpontaneousSetsInput(String(DEFAULT_SETS));
     setShowSpontaneousSuggestions(false);
-    setSpontaneousModalVisible(false);
   };
 
   const persistWorkoutToHistory = (routineName, color, exercisesList) => {
@@ -1227,16 +1290,25 @@ export default function App() {
     });
 
     const targetDate = (isEditingSavedWorkout && editingHistoryDate) ? editingHistoryDate : todayStr;
+    const existingSessions = getSessionsForDate(history, targetDate);
+    const existingForEdit = (isEditingSavedWorkout && editingSessionIndex !== null)
+      ? existingSessions[editingSessionIndex]
+      : null;
 
     const newSession = {
       routineName,
       color,
       exercises: structuredExercises,
       timestamp: Date.now(),
-      note: workoutNote.trim()
+      note: workoutNote.trim(),
+      durationSeconds: isEditingSavedWorkout
+        ? (existingForEdit?.durationSeconds ?? workoutElapsedSeconds)
+        : workoutElapsedSeconds,
+      startedAt: isEditingSavedWorkout
+        ? existingForEdit?.startedAt
+        : (workoutStartedAt || (Date.now() - (workoutElapsedSeconds * 1000)))
     };
 
-    const existingSessions = getSessionsForDate(history, targetDate);
     let nextSessions;
     if (isEditingSavedWorkout && editingSessionIndex !== null && existingSessions[editingSessionIndex]) {
       nextSessions = existingSessions.map((session, idx) => (
@@ -1264,6 +1336,8 @@ export default function App() {
     setSpontaneousExercises([]);
     setActiveWorkoutLogs({});
     setWorkoutNote('');
+    resetLiveSessionExtras();
+    haltWorkoutClock(true);
     setTimerSeconds(0);
     setTimerActive(false);
     Alert.alert('Saved', 'Workout saved to history.');
@@ -1320,6 +1394,9 @@ export default function App() {
     setEditingHistoryDate(dateStr);
     setEditingSessionIndex(sessionIdx);
     setIsGymDayChecked(true);
+    resetLiveSessionExtras();
+    haltWorkoutClock(true);
+    setWorkoutElapsedSeconds(parseInt(entry.durationSeconds, 10) || 0);
     setHistoryModalVisible(false);
     setTodayPane('workout');
     setCurrentTab('today');
@@ -1338,6 +1415,8 @@ export default function App() {
     setSpontaneousExercises([]);
     setActiveWorkoutLogs({});
     setWorkoutNote('');
+    resetLiveSessionExtras();
+    haltWorkoutClock(true);
   };
 
   const openHistoryDay = (dateKey) => {
@@ -1418,6 +1497,7 @@ export default function App() {
   useEffect(() => {
     if (!currentActiveRoutine || isSpontaneousMode || isEditingSavedWorkout) return;
 
+    setSessionExtraExercises([]);
     setActiveWorkoutLogs((prev) => {
       const next = {};
       currentActiveRoutine.exercises.forEach((ex) => {
@@ -1479,7 +1559,7 @@ export default function App() {
     persistWorkoutToHistory(
       currentActiveRoutine.name,
       currentActiveRoutine.color,
-      currentActiveRoutine.exercises
+      [...currentActiveRoutine.exercises, ...sessionExtraExercises]
     );
   };
 
@@ -1998,12 +2078,22 @@ export default function App() {
     );
   }, [exInput, newRoutineExercises, combinedExercisePool]);
 
+  const liveSessionExerciseNames = useMemo(() => {
+    if (isSpontaneousMode) {
+      return spontaneousExercises.map(e => e.name.toLowerCase());
+    }
+    const fromRoutine = currentActiveRoutine?.exercises?.map(e => e.name.toLowerCase()) || [];
+    const extras = sessionExtraExercises.map(e => e.name.toLowerCase());
+    return [...fromRoutine, ...extras];
+  }, [isSpontaneousMode, spontaneousExercises, currentActiveRoutine, sessionExtraExercises]);
+
   const filteredSpontaneousSuggestions = useMemo(() => {
     if (!spontaneousExInput.trim()) return [];
     return combinedExercisePool.filter(item =>
-      item.toLowerCase().includes(spontaneousExInput.toLowerCase())
+      item.toLowerCase().includes(spontaneousExInput.toLowerCase()) &&
+      !liveSessionExerciseNames.includes(item.toLowerCase())
     );
-  }, [spontaneousExInput, combinedExercisePool]);
+  }, [spontaneousExInput, combinedExercisePool, liveSessionExerciseNames]);
 
   const filteredPrSuggestions = useMemo(() => {
     if (!newPrExName.trim()) return [];
@@ -2011,6 +2101,83 @@ export default function App() {
       item.toLowerCase().includes(newPrExName.toLowerCase())
     );
   }, [newPrExName, combinedExercisePool]);
+
+  const renderWorkoutClock = () => {
+    const isLive = !!workoutStartedAt;
+    const durationLabel = formatWorkoutDurationLabel(workoutElapsedSeconds);
+    return (
+      <View style={styles.workoutClockCard}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <Ionicons name="time-outline" size={20} color={THEME.accent} style={{ marginRight: 8 }} />
+          <View>
+            <Text style={styles.workoutClockLabel}>
+              {isEditingSavedWorkout ? 'Saved duration' : 'Workout time'}
+            </Text>
+            <Text style={styles.workoutClockValue}>{formatWorkoutClock(workoutElapsedSeconds)}</Text>
+          </View>
+        </View>
+        {isLive ? (
+          <View style={styles.workoutLivePill}>
+            <View style={styles.workoutLiveDot} />
+            <Text style={styles.workoutLiveText}>LIVE</Text>
+          </View>
+        ) : durationLabel ? (
+          <Text style={styles.workoutClockHint}>{durationLabel}</Text>
+        ) : (
+          <Text style={styles.workoutClockHint}>Starts with session</Text>
+        )}
+      </View>
+    );
+  };
+
+  const renderSessionExerciseAdder = () => (
+    <View style={styles.sessionAddBlock}>
+      <Text style={styles.sessionAddLabel}>Add exercise</Text>
+      <View style={styles.picAppendRow}>
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <TextInput
+            style={styles.picSearchInput}
+            placeholder="Search exercise..."
+            placeholderTextColor="#666"
+            value={spontaneousExInput}
+            onChangeText={(val) => { setSpontaneousExInput(val); setShowSpontaneousSuggestions(true); }}
+            onSubmitEditing={handleAddExerciseToActiveWorkout}
+            returnKeyType="done"
+          />
+        </View>
+        <TextInput
+          style={styles.picSetsInput}
+          placeholder="2"
+          placeholderTextColor="#666"
+          keyboardType="numeric"
+          value={spontaneousSetsInput}
+          onChangeText={setSpontaneousSetsInput}
+        />
+        <TouchableOpacity style={styles.picAddBtn} onPress={handleAddExerciseToActiveWorkout}>
+          <Ionicons name="add" size={20} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+
+      {showSpontaneousSuggestions && filteredSpontaneousSuggestions.length > 0 && (
+        <View style={styles.suggestionsContainer}>
+          <ScrollView style={{ maxHeight: 120 }} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+            {filteredSpontaneousSuggestions.map((item, idx) => (
+              <TouchableOpacity
+                key={`${item}-${idx}`}
+                style={styles.suggestionItem}
+                onPress={() => {
+                  setSpontaneousExInput(item);
+                  setShowSpontaneousSuggestions(false);
+                }}
+              >
+                <Text style={{ color: THEME.text, fontSize: 13 }}>{item}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
 
   const renderTimerBanner = () => (
     <>
@@ -2082,7 +2249,14 @@ export default function App() {
           <Ionicons name="flash" size={26} color={THEME.accent} style={{ marginRight: 6 }} />
           <Text style={styles.headerTitle}>KatTracker</Text>
         </View>
-        <Text style={styles.headerSubtitle}>{todayStr}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.headerSubtitle}>{todayStr}</Text>
+          {(workoutStartedAt || ((isSpontaneousMode || isGymDayChecked) && workoutElapsedSeconds > 0)) ? (
+            <Text style={styles.headerWorkoutTime}>
+              {workoutStartedAt ? '● ' : ''}{formatWorkoutClock(workoutElapsedSeconds)}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
@@ -2152,7 +2326,7 @@ export default function App() {
                     </TouchableOpacity>
                   </View>
                   <Text style={styles.reportPreviewLine}>
-                    {weeklyReport.workoutDays} gym days · {weeklyReport.totalSets} sets · sleep {weeklyReport.avgSleep != null ? formatDurationHours(weeklyReport.avgSleep) : '--'}
+                    {weeklyReport.workoutDays} gym days · {weeklyReport.totalSets} sets · {formatWorkoutDurationLabel(weeklyReport.totalWorkoutSeconds) || '0 min'} gym time · sleep {weeklyReport.avgSleep != null ? formatDurationHours(weeklyReport.avgSleep) : '--'}
                   </Text>
                 </View>
 
@@ -2567,19 +2741,14 @@ export default function App() {
                         : 'Build a freestyle workout'}
                     </Text>
                   </View>
-                  <TouchableOpacity
-                    style={[styles.primaryButton, { paddingHorizontal: 12, paddingVertical: 6 }]}
-                    onPress={() => setSpontaneousModalVisible(true)}
-                  >
-                    <Text style={{ color: THEME.text, fontWeight: '700', fontSize: 12 }}>+ Add Exercise</Text>
-                  </TouchableOpacity>
                 </View>
 
+                {renderWorkoutClock()}
                 {renderTimerBanner()}
 
                 {spontaneousExercises.length === 0 ? (
-                  <View style={{ paddingVertical: 20, alignItems: 'center' }}>
-                    <Text style={{ color: THEME.textMuted }}>No exercises yet. Tap + Add Exercise to start.</Text>
+                  <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                    <Text style={{ color: THEME.textMuted }}>No exercises yet. Search below to add one.</Text>
                   </View>
                 ) : (
                   <View style={{ marginTop: 8 }}>
@@ -2592,7 +2761,13 @@ export default function App() {
                         {...loggerProps}
                       />
                     ))}
+                  </View>
+                )}
 
+                {renderSessionExerciseAdder()}
+
+                {spontaneousExercises.length > 0 ? (
+                  <View>
                     <Text style={styles.noteLabel}>Note (optional)</Text>
                     <TextInput
                       style={styles.noteInput}
@@ -2617,6 +2792,15 @@ export default function App() {
                       </Text>
                     </TouchableOpacity>
                   </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.clearImpromptuBtn, { marginTop: 4 }]}
+                    onPress={cancelEditingSession}
+                  >
+                    <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
+                      {isEditingSavedWorkout ? 'Cancel Edit' : 'Cancel Session'}
+                    </Text>
+                  </TouchableOpacity>
                 )}
               </View>
             ) : (isTodayCompleted && !impromptuRoutine) ? (
@@ -2689,12 +2873,20 @@ export default function App() {
                       </View>
                       <View style={[styles.badge, { backgroundColor: currentActiveRoutine.color + '22' }]}>
                         <Text style={{ color: currentActiveRoutine.color, fontWeight: '700', fontSize: 12 }}>
-                          {currentActiveRoutine.exercises.length} Exercises
+                          {currentActiveRoutine.exercises.length + sessionExtraExercises.length} Exercises
                         </Text>
                       </View>
                     </View>
                     {impromptuRoutine && (
-                      <TouchableOpacity style={styles.clearImpromptuBtn} onPress={() => setImpromptuRoutine(null)}>
+                      <TouchableOpacity
+                        style={styles.clearImpromptuBtn}
+                        onPress={() => {
+                          setImpromptuRoutine(null);
+                          resetLiveSessionExtras();
+                          haltWorkoutClock(true);
+                          setIsGymDayChecked(false);
+                        }}
+                      >
                         <Text style={{ color: '#FF4444', fontSize: 12, fontWeight: '600' }}>Clear Selection</Text>
                       </TouchableOpacity>
                     )}
@@ -2728,7 +2920,15 @@ export default function App() {
                       <Text style={styles.toggleText}>Ready to log today's session?</Text>
                       <TouchableOpacity
                         style={[styles.checkbox, isGymDayChecked && styles.checkboxChecked]}
-                        onPress={() => setIsGymDayChecked(!isGymDayChecked)}
+                        onPress={() => {
+                          const next = !isGymDayChecked;
+                          setIsGymDayChecked(next);
+                          if (next) {
+                            beginWorkoutClock(workoutElapsedSeconds);
+                          } else {
+                            haltWorkoutClock(false);
+                          }
+                        }}
                       >
                         {isGymDayChecked && <Ionicons name="checkmark" size={16} color={THEME.text} />}
                       </TouchableOpacity>
@@ -2736,6 +2936,7 @@ export default function App() {
 
                     {isGymDayChecked && (
                       <View style={{ marginTop: 20 }}>
+                        {renderWorkoutClock()}
                         {renderTimerBanner()}
 
                         {currentActiveRoutine.exercises.map((ex) => (
@@ -2747,6 +2948,18 @@ export default function App() {
                             {...loggerProps}
                           />
                         ))}
+
+                        {sessionExtraExercises.map((ex) => (
+                          <ExerciseSetLogger
+                            key={ex.id}
+                            exercise={ex}
+                            sets={activeWorkoutLogs[ex.id]}
+                            pastSets={getPreviousPerformance(ex.name, todayStr)}
+                            {...loggerProps}
+                          />
+                        ))}
+
+                        {renderSessionExerciseAdder()}
 
                         <Text style={styles.noteLabel}>Note (optional)</Text>
                         <TextInput
@@ -2939,6 +3152,9 @@ export default function App() {
                           </View>
                           <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>
                             {item.exercises ? item.exercises.length : 0} Exercises
+                            {formatWorkoutDurationLabel(item.durationSeconds)
+                              ? ` · ${formatWorkoutDurationLabel(item.durationSeconds)}`
+                              : ''}
                           </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -3317,64 +3533,6 @@ export default function App() {
         </View>
       </Modal>
 
-      <Modal visible={spontaneousModalVisible} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Add Exercise</Text>
-
-            <Text style={styles.inputLabel}>Search or type exercise:</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Bench Press"
-              placeholderTextColor="#666"
-              value={spontaneousExInput}
-              onChangeText={(val) => {
-                setSpontaneousExInput(val);
-                setShowSpontaneousSuggestions(true);
-              }}
-            />
-
-            {showSpontaneousSuggestions && filteredSpontaneousSuggestions.length > 0 && (
-              <View style={styles.suggestionsContainer}>
-                <ScrollView style={{ maxHeight: 120 }}>
-                  {filteredSpontaneousSuggestions.map((item, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={styles.suggestionItem}
-                      onPress={() => {
-                        setSpontaneousExInput(item);
-                        setShowSpontaneousSuggestions(false);
-                      }}
-                    >
-                      <Text style={{ color: THEME.text, fontSize: 13 }}>{item}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            <Text style={styles.inputLabel}>Sets:</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="2"
-              placeholderTextColor="#666"
-              keyboardType="numeric"
-              value={spontaneousSetsInput}
-              onChangeText={setSpontaneousSetsInput}
-            />
-
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16 }}>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight }]} onPress={() => setSpontaneousModalVisible(false)}>
-                <Text style={{ color: THEME.text }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.accent, marginLeft: 8 }]} onPress={handleAddSpontaneousExercise}>
-                <Text style={{ color: THEME.text, fontWeight: '700' }}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       <Modal visible={prModalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -3476,6 +3634,16 @@ export default function App() {
                         <Text style={styles.smallAccentBtnText}>Edit</Text>
                       </TouchableOpacity>
                     </View>
+
+                    {formatWorkoutDurationLabel(session.durationSeconds) ? (
+                      <View style={styles.historyDurationRow}>
+                        <Ionicons name="time-outline" size={16} color={THEME.accent} style={{ marginRight: 6 }} />
+                        <Text style={styles.historyDurationText}>
+                          Duration {formatWorkoutDurationLabel(session.durationSeconds)}
+                          {` (${formatWorkoutClock(session.durationSeconds)})`}
+                        </Text>
+                      </View>
+                    ) : null}
 
                     {session.exercises?.map((ex, exIdx) => {
                       const pastSets = getPreviousPerformance(ex.name, selectedHistoryDate);
@@ -3620,6 +3788,12 @@ export default function App() {
                 <View style={styles.reportStatCell}>
                   <Text style={styles.reportStatLabel}>Total sets</Text>
                   <Text style={styles.reportStatValue}>{weeklyReport.totalSets}</Text>
+                </View>
+                <View style={styles.reportStatCell}>
+                  <Text style={styles.reportStatLabel}>Gym time</Text>
+                  <Text style={styles.reportStatValue}>
+                    {formatWorkoutDurationLabel(weeklyReport.totalWorkoutSeconds) || '--'}
+                  </Text>
                 </View>
                 <View style={styles.reportStatCell}>
                   <Text style={styles.reportStatLabel}>Exercises</Text>
@@ -3909,6 +4083,12 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     color: THEME.textMuted,
     fontSize: 12,
+  },
+  headerWorkoutTime: {
+    color: THEME.accent,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 2,
   },
   spontaneousLaunchBtn: {
     flexDirection: 'row',
@@ -5042,6 +5222,78 @@ const styles = StyleSheet.create({
     color: THEME.text,
     fontSize: 13,
     fontWeight: '600',
+  },
+  workoutClockCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: THEME.surfaceLight,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  workoutClockLabel: {
+    color: THEME.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  workoutClockValue: {
+    color: THEME.text,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    marginTop: 1,
+  },
+  workoutClockHint: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  workoutLivePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.accentMuted,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  workoutLiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: THEME.accent,
+    marginRight: 5,
+  },
+  workoutLiveText: {
+    color: THEME.accent,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  sessionAddBlock: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  sessionAddLabel: {
+    color: THEME.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  historyDurationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    marginTop: -4,
+  },
+  historyDurationText: {
+    color: THEME.text,
+    fontSize: 13,
+    fontWeight: '700',
   },
   timerCancelBtn: {
     paddingHorizontal: 8,
