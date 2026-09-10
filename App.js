@@ -8,7 +8,6 @@ import {
   TextInput,
   Modal,
   Alert,
-  SafeAreaView,
   StatusBar,
   Platform,
   Vibration,
@@ -16,6 +15,23 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+
+// Prefer Expo/community safe-area insets — RN SafeAreaView often draws a white top hairline on iOS
+let useSafeAreaInsets = () => ({
+  top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 47,
+  bottom: Platform.OS === 'ios' ? 20 : 0,
+  left: 0,
+  right: 0
+});
+try {
+  const safeAreaMod = require('react-native-safe-area-context');
+  if (safeAreaMod?.useSafeAreaInsets) {
+    useSafeAreaInsets = safeAreaMod.useSafeAreaInsets;
+  }
+} catch (e) {
+  // fallback insets above
+}
+
 let ImagePicker = null;
 try {
   ImagePicker = require('expo-image-picker');
@@ -662,6 +678,7 @@ function ExerciseSetLogger({
 }
 
 export default function App() {
+  const insets = useSafeAreaInsets();
   const [currentTab, setCurrentTab] = useState('today');
   const [todayPane, setTodayPane] = useState('workout'); // 'workout' | 'stats'
   const [historyPane, setHistoryPane] = useState('log'); // 'log' | 'prs'
@@ -2311,8 +2328,9 @@ export default function App() {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center]}>
-        <StatusBar barStyle="light-content" backgroundColor={THEME.background} />
+      <View style={[styles.rootShell, styles.center]}>
+        <StatusBar barStyle="light-content" backgroundColor={THEME.background} translucent />
+        <View style={[styles.statusBarFill, { height: Math.max(insets.top, 0) }]} />
         <Text style={{ color: THEME.text, fontSize: 18, fontWeight: '600' }}>Loading KatTracker...</Text>
       </View>
     );
@@ -2320,8 +2338,19 @@ export default function App() {
 
   return (
     <View style={styles.rootShell}>
-      <StatusBar barStyle="light-content" backgroundColor={THEME.background} translucent={false} />
-      <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={THEME.background} translucent />
+      {/* Solid fill behind status bar — covers the iOS white hairline SafeAreaView caused */}
+      <View
+        style={[
+          styles.statusBarFill,
+          {
+            height: Math.max(insets.top, 0) + 2,
+            marginBottom: -2
+          }
+        ]}
+      />
+
+      <View style={styles.container}>
 
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -4208,7 +4237,7 @@ export default function App() {
         </View>
       </Modal>
 
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
         <TouchableOpacity style={styles.tabItem} onPress={() => setCurrentTab('today')}>
           <Ionicons name="today" size={20} color={currentTab === 'today' ? THEME.accent : THEME.textMuted} />
           <Text style={[styles.tabLabel, currentTab === 'today' && styles.tabLabelActive]}>Today</Text>
@@ -4241,7 +4270,7 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-    </SafeAreaView>
+    </View>
     </View>
   );
 }
@@ -4251,10 +4280,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: THEME.background,
   },
+  statusBarFill: {
+    width: '100%',
+    backgroundColor: THEME.background,
+    zIndex: 10,
+  },
   container: {
     flex: 1,
     backgroundColor: THEME.background,
-    borderTopWidth: 0,
   },
   center: {
     justifyContent: 'center',
@@ -4266,7 +4299,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderTopWidth: 0,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
     backgroundColor: THEME.background,
