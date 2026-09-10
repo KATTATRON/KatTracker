@@ -512,6 +512,58 @@ const getSessionsForDate = (historyObj, dateStr) => {
   return Array.isArray(dayEntry) ? dayEntry : [dayEntry];
 };
 
+const getBestSetFromSets = (sets) => {
+  if (!Array.isArray(sets) || sets.length === 0) return null;
+  let best = null;
+  sets.forEach((set) => {
+    const weight = parseFloat(set.weight) || 0;
+    const reps = parseInt(set.reps, 10) || 0;
+    if (!best) {
+      best = { weight, reps };
+      return;
+    }
+    if (weight > best.weight || (weight === best.weight && reps > best.reps)) {
+      best = { weight, reps };
+    }
+  });
+  return best;
+};
+
+const buildExerciseProgressSeries = (historyObj, exerciseName, limit = 12) => {
+  if (!exerciseName) return [];
+  const key = exerciseName.toLowerCase();
+  const points = [];
+
+  Object.keys(historyObj || {})
+    .sort((a, b) => (a < b ? -1 : 1))
+    .forEach((dateStr) => {
+      getSessionsForDate(historyObj, dateStr).forEach((session, sessionIdx) => {
+        const match = (session.exercises || []).find(
+          (ex) => (ex.name || '').toLowerCase() === key
+        );
+        if (!match) return;
+        const best = getBestSetFromSets(match.sets);
+        if (!best) return;
+        const volume = (match.sets || []).reduce(
+          (sum, s) => sum + ((parseFloat(s.weight) || 0) * (parseInt(s.reps, 10) || 0)),
+          0
+        );
+        points.push({
+          id: `${dateStr}-${sessionIdx}`,
+          dateStr,
+          sessionIdx,
+          routineName: session.routineName || 'Workout',
+          maxWeight: best.weight,
+          bestReps: best.reps,
+          volume,
+          setCount: Array.isArray(match.sets) ? match.sets.length : 0
+        });
+      });
+    });
+
+  return points.slice(-Math.max(1, limit));
+};
+
 // Shared set logger (same look as before, used by scheduled + spontaneous)
 function ExerciseSetLogger({
   exercise,
@@ -665,6 +717,8 @@ export default function App() {
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [selectedHistoryDate, setSelectedHistoryDate] = useState(null);
   const [historyNoteEdits, setHistoryNoteEdits] = useState({});
+  const [exerciseChartVisible, setExerciseChartVisible] = useState(false);
+  const [selectedExerciseChartName, setSelectedExerciseChartName] = useState(null);
 
   const [addictionModalVisible, setAddictionModalVisible] = useState(false);
   const [newAddictionName, setNewAddictionName] = useState('');
@@ -1429,6 +1483,30 @@ export default function App() {
     setSelectedHistoryDate(dateKey);
     setHistoryModalVisible(true);
   };
+
+  const openExerciseChart = (exerciseName) => {
+    if (!exerciseName) return;
+    setSelectedExerciseChartName(exerciseName);
+    setExerciseChartVisible(true);
+  };
+
+  const exerciseProgressSeries = useMemo(
+    () => buildExerciseProgressSeries(history, selectedExerciseChartName, 12),
+    [history, selectedExerciseChartName]
+  );
+
+  const exerciseProgressStats = useMemo(() => {
+    if (!exerciseProgressSeries.length) {
+      return { maxWeight: null, latest: null, first: null, delta: null, maxVolume: 1 };
+    }
+    const weights = exerciseProgressSeries.map((p) => p.maxWeight);
+    const maxWeight = Math.max(...weights);
+    const latest = exerciseProgressSeries[exerciseProgressSeries.length - 1];
+    const first = exerciseProgressSeries[0];
+    const delta = latest.maxWeight - first.maxWeight;
+    const maxVolume = Math.max(1, ...exerciseProgressSeries.map((p) => p.volume || 0));
+    return { maxWeight, latest, first, delta, maxVolume };
+  }, [exerciseProgressSeries]);
 
   const handleSaveHistoryNote = (sessionIdx) => {
     if (!selectedHistoryDate) return;
@@ -2234,15 +2312,16 @@ export default function App() {
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
-        <StatusBar barStyle="light-content" />
+        <StatusBar barStyle="light-content" backgroundColor={THEME.background} />
         <Text style={{ color: THEME.text, fontSize: 18, fontWeight: '600' }}>Loading KatTracker...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+    <View style={styles.rootShell}>
+      <StatusBar barStyle="light-content" backgroundColor={THEME.background} translucent={false} />
+      <SafeAreaView style={styles.container}>
 
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -3650,7 +3729,17 @@ export default function App() {
 
                       return (
                         <View key={exIdx} style={{ marginBottom: 16, padding: 10, backgroundColor: THEME.surfaceLight, borderRadius: 8 }}>
-                          <Text style={{ color: THEME.text, fontWeight: '700', marginBottom: 6 }}>{ex.name}</Text>
+                          <TouchableOpacity
+                            style={styles.historyExerciseTitleRow}
+                            onPress={() => openExerciseChart(ex.name)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={{ color: THEME.text, fontWeight: '700', flex: 1, marginRight: 8 }}>{ex.name}</Text>
+                            <View style={styles.historyExerciseChartHint}>
+                              <Ionicons name="stats-chart" size={14} color={THEME.accent} />
+                              <Text style={styles.historyExerciseChartHintText}>Chart</Text>
+                            </View>
+                          </TouchableOpacity>
 
                           {ex.sets?.map((set, sIdx) => {
                             let diffTag = null;
@@ -3716,6 +3805,105 @@ export default function App() {
             )}
 
             <TouchableOpacity style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight, marginTop: 12 }]} onPress={() => setHistoryModalVisible(false)}>
+              <Text style={{ color: THEME.text, textAlign: 'center' }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={exerciseChartVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { maxHeight: '88%' }]}>
+            <View style={styles.modalHeaderRow}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.modalTitle} numberOfLines={2}>{selectedExerciseChartName || 'Exercise'}</Text>
+                <Text style={styles.cardMutedText}>Top-set weight over recent sessions</Text>
+              </View>
+              <TouchableOpacity onPress={() => setExerciseChartVisible(false)}>
+                <Ionicons name="close" size={22} color={THEME.text} />
+              </TouchableOpacity>
+            </View>
+
+            {exerciseProgressSeries.length === 0 ? (
+              <Text style={{ color: THEME.textMuted, marginTop: 16 }}>No logged sets found for this exercise yet.</Text>
+            ) : (
+              <ScrollView style={{ marginTop: 10 }} showsVerticalScrollIndicator={false}>
+                <View style={styles.exChartStatRow}>
+                  <View style={styles.exChartStatCell}>
+                    <Text style={styles.exChartStatLabel}>Best</Text>
+                    <Text style={styles.exChartStatValue}>
+                      {exerciseProgressStats.maxWeight != null ? `${exerciseProgressStats.maxWeight} kg` : '--'}
+                    </Text>
+                  </View>
+                  <View style={styles.exChartStatCell}>
+                    <Text style={styles.exChartStatLabel}>Latest</Text>
+                    <Text style={styles.exChartStatValue}>
+                      {exerciseProgressStats.latest
+                        ? `${exerciseProgressStats.latest.maxWeight} kg × ${exerciseProgressStats.latest.bestReps}`
+                        : '--'}
+                    </Text>
+                  </View>
+                  <View style={[styles.exChartStatCell, styles.exChartStatCellLast]}>
+                    <Text style={styles.exChartStatLabel}>Change</Text>
+                    <Text style={[
+                      styles.exChartStatValue,
+                      {
+                        color: exerciseProgressStats.delta == null
+                          ? THEME.text
+                          : exerciseProgressStats.delta >= 0 ? THEME.success : '#EF4444'
+                      }
+                    ]}>
+                      {exerciseProgressStats.delta == null
+                        ? '--'
+                        : `${exerciseProgressStats.delta > 0 ? '+' : ''}${exerciseProgressStats.delta} kg`}
+                    </Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.chartSectionLabel, { marginTop: 8 }]}>WEIGHT TREND</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                  <View style={styles.exChartBarsRow}>
+                    {exerciseProgressSeries.map((point) => {
+                      const maxW = Math.max(1, exerciseProgressStats.maxWeight || 1);
+                      const heightPct = Math.max(8, Math.min(100, (point.maxWeight / maxW) * 100));
+                      return (
+                        <View key={point.id} style={styles.exChartBarCol}>
+                          <Text style={styles.exChartBarValue}>{point.maxWeight}</Text>
+                          <View style={styles.exChartBarTrack}>
+                            <View
+                              style={[
+                                styles.exChartBarFill,
+                                { height: `${heightPct}%` }
+                              ]}
+                            />
+                          </View>
+                          <Text style={styles.exChartBarDate}>{point.dateStr.slice(5)}</Text>
+                          <Text style={styles.exChartBarReps}>{point.bestReps} reps</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                <Text style={[styles.chartSectionLabel, { marginTop: 18 }]}>SESSIONS</Text>
+                {exerciseProgressSeries.slice().reverse().map((point) => (
+                  <View key={`list-${point.id}`} style={styles.exChartSessionRow}>
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text style={styles.exChartSessionDate}>{point.dateStr}</Text>
+                      <Text style={styles.exChartSessionMeta}>{point.routineName} · {point.setCount} sets</Text>
+                    </View>
+                    <Text style={styles.exChartSessionWeight}>
+                      {point.maxWeight} kg × {point.bestReps}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: THEME.surfaceLight, marginTop: 12 }]}
+              onPress={() => setExerciseChartVisible(false)}
+            >
               <Text style={{ color: THEME.text, textAlign: 'center' }}>Close</Text>
             </TouchableOpacity>
           </View>
@@ -4054,13 +4242,19 @@ export default function App() {
       </View>
 
     </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  rootShell: {
+    flex: 1,
+    backgroundColor: THEME.background,
+  },
   container: {
     flex: 1,
     backgroundColor: THEME.background,
+    borderTopWidth: 0,
   },
   center: {
     justifyContent: 'center',
@@ -4072,8 +4266,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderTopWidth: 0,
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,
+    backgroundColor: THEME.background,
   },
   headerTitle: {
     color: THEME.text,
@@ -5294,6 +5490,119 @@ const styles = StyleSheet.create({
     color: THEME.text,
     fontSize: 13,
     fontWeight: '700',
+  },
+  historyExerciseTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  historyExerciseChartHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.accentMuted,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  historyExerciseChartHintText: {
+    color: THEME.accent,
+    fontSize: 11,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  exChartStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  exChartStatCell: {
+    flex: 1,
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 10,
+    padding: 10,
+    marginRight: 8,
+  },
+  exChartStatCellLast: {
+    marginRight: 0,
+  },
+  exChartStatLabel: {
+    color: THEME.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  exChartStatValue: {
+    color: THEME.text,
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: 4,
+  },
+  exChartBarsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    paddingRight: 8,
+    minHeight: 170,
+  },
+  exChartBarCol: {
+    width: 52,
+    alignItems: 'center',
+    marginRight: 8,
+    height: 170,
+    justifyContent: 'flex-end',
+  },
+  exChartBarValue: {
+    color: THEME.text,
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  exChartBarTrack: {
+    width: 22,
+    height: 110,
+    justifyContent: 'flex-end',
+    backgroundColor: THEME.background,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  exChartBarFill: {
+    width: '100%',
+    backgroundColor: THEME.accent,
+    borderRadius: 8,
+    minHeight: 4,
+  },
+  exChartBarDate: {
+    color: THEME.textMuted,
+    fontSize: 10,
+    marginTop: 6,
+    fontWeight: '600',
+  },
+  exChartBarReps: {
+    color: THEME.textMuted,
+    fontSize: 9,
+    marginTop: 1,
+  },
+  exChartSessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: THEME.surfaceLight,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  exChartSessionDate: {
+    color: THEME.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  exChartSessionMeta: {
+    color: THEME.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  exChartSessionWeight: {
+    color: THEME.accent,
+    fontSize: 13,
+    fontWeight: '800',
   },
   timerCancelBtn: {
     paddingHorizontal: 8,
