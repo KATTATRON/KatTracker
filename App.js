@@ -446,7 +446,7 @@ const getHabitStreak = (historyObj = {}) => {
 };
 
 const getGymDayStreak = (historyObj = {}) => {
-  const hasWorkout = (dateStr) => getSessionsForDate(historyObj, dateStr).length > 0;
+  const hasWorkout = (dateStr) => dayHasLoggedWorkout(historyObj, dateStr);
   const cursor = new Date();
   const todayStr = getLocalDateString(cursor);
   if (!hasWorkout(todayStr)) {
@@ -476,7 +476,7 @@ const getBestGymWeek = (historyObj = {}) => {
     let count = 0;
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const key = getLocalDateString(d);
-      if (getSessionsForDate(historyObj, key).length > 0) count += 1;
+      if (dayHasLoggedWorkout(historyObj, key)) count += 1;
     }
     if (count > best.count) {
       best = {
@@ -493,6 +493,22 @@ const emptySet = (weight = '', reps = '') => ({ weight, reps, done: false });
 
 const buildEmptySets = (count) =>
   Array.from({ length: Math.max(1, count || 1) }, () => emptySet());
+
+// A set only "counts" if the user actually logged weight and/or reps.
+// Empty placeholders (and 0×0 leftovers) are ignored for recovery, weekly stats, etc.
+const isSetLogged = (set) => {
+  if (!set) return false;
+  const weight = parseFloat(set.weight);
+  const reps = parseInt(set.reps, 10);
+  return (Number.isFinite(weight) && weight > 0) || (Number.isFinite(reps) && reps > 0);
+};
+
+const getLoggedSets = (sets) => (Array.isArray(sets) ? sets.filter(isSetLogged) : []);
+
+const exerciseHasLoggedWork = (ex) => getLoggedSets(ex?.sets).length > 0;
+
+const sessionHasLoggedWork = (session) =>
+  Array.isArray(session?.exercises) && session.exercises.some(exerciseHasLoggedWork);
 
 const formatTimerString = (totalSeconds) => {
   const mins = Math.floor(totalSeconds / 60);
@@ -528,10 +544,14 @@ const getSessionsForDate = (historyObj, dateStr) => {
   return Array.isArray(dayEntry) ? dayEntry : [dayEntry];
 };
 
+const dayHasLoggedWorkout = (historyObj, dateStr) =>
+  getSessionsForDate(historyObj, dateStr).some(sessionHasLoggedWork);
+
 const getBestSetFromSets = (sets) => {
-  if (!Array.isArray(sets) || sets.length === 0) return null;
+  const logged = getLoggedSets(sets);
+  if (logged.length === 0) return null;
   let best = null;
-  sets.forEach((set) => {
+  logged.forEach((set) => {
     const weight = parseFloat(set.weight) || 0;
     const reps = parseInt(set.reps, 10) || 0;
     if (!best) {
@@ -558,9 +578,10 @@ const buildExerciseProgressSeries = (historyObj, exerciseName, limit = 12) => {
           (ex) => (ex.name || '').toLowerCase() === key
         );
         if (!match) return;
-        const best = getBestSetFromSets(match.sets);
+        const loggedSets = getLoggedSets(match.sets);
+        const best = getBestSetFromSets(loggedSets);
         if (!best) return;
-        const volume = (match.sets || []).reduce(
+        const volume = loggedSets.reduce(
           (sum, s) => sum + ((parseFloat(s.weight) || 0) * (parseInt(s.reps, 10) || 0)),
           0
         );
@@ -572,7 +593,7 @@ const buildExerciseProgressSeries = (historyObj, exerciseName, limit = 12) => {
           maxWeight: best.weight,
           bestReps: best.reps,
           volume,
-          setCount: Array.isArray(match.sets) ? match.sets.length : 0
+          setCount: loggedSets.length
         });
       });
     });
@@ -907,6 +928,7 @@ export default function App() {
       daySessions.forEach((entry) => {
         const sessionTimestamp = entry.timestamp || 0;
         (entry.exercises || []).forEach((ex) => {
+          if (!exerciseHasLoggedWork(ex)) return;
           const category = resolveExerciseCategory(ex.name);
           if (!category || !RECOVERY_CATEGORIES.includes(category)) return;
           const current = latestCategoryTimestamp[category];
@@ -960,7 +982,7 @@ export default function App() {
         (entry.exercises || []).forEach((ex) => {
           const category = resolveExerciseCategory(ex.name);
           if (!category || !Object.prototype.hasOwnProperty.call(counts, category)) return;
-          counts[category] += Array.isArray(ex.sets) ? ex.sets.length : 0;
+          counts[category] += getLoggedSets(ex.sets).length;
         });
       });
     });
@@ -1072,15 +1094,18 @@ export default function App() {
 
     dates.forEach((dateStr) => {
       const sessions = getSessionsForDate(history, dateStr);
-      if (sessions.length > 0) workoutDays += 1;
-      totalSessions += sessions.length;
-      sessions.forEach((session) => {
+      const loggedSessions = sessions.filter(sessionHasLoggedWork);
+      if (loggedSessions.length > 0) workoutDays += 1;
+      totalSessions += loggedSessions.length;
+      loggedSessions.forEach((session) => {
         totalWorkoutSeconds += Math.max(0, parseInt(session.durationSeconds, 10) || 0);
         (session.exercises || []).forEach((ex) => {
+          const loggedSets = getLoggedSets(ex.sets);
+          if (loggedSets.length === 0) return;
           totalExercises += 1;
           const category = resolveExerciseCategory(ex.name);
           if (category && Object.prototype.hasOwnProperty.call(setsByMuscle, category)) {
-            setsByMuscle[category] += Array.isArray(ex.sets) ? ex.sets.length : 0;
+            setsByMuscle[category] += loggedSets.length;
           }
         });
       });
@@ -1143,8 +1168,8 @@ export default function App() {
         const foundEx = pastEntry.exercises?.find(
           e => e.name.toLowerCase() === exerciseName.toLowerCase()
         );
-        if (foundEx && foundEx.sets) {
-          return foundEx.sets;
+        if (foundEx && exerciseHasLoggedWork(foundEx)) {
+          return getLoggedSets(foundEx.sets);
         }
       }
     }
@@ -1348,17 +1373,29 @@ export default function App() {
   };
 
   const persistWorkoutToHistory = (routineName, color, exercisesList) => {
-    const structuredExercises = exercisesList.map(ex => {
-      const setsFilled = activeWorkoutLogs[ex.id] || [];
-      return {
-        name: ex.name,
-        sets: setsFilled.map(s => ({
-          weight: parseFloat(s.weight) || 0,
-          reps: parseInt(s.reps, 10) || 0,
-          done: !!s.done
-        }))
-      };
-    });
+    const structuredExercises = exercisesList
+      .map(ex => {
+        const setsFilled = activeWorkoutLogs[ex.id] || [];
+        const loggedSets = setsFilled
+          .filter(isSetLogged)
+          .map(s => ({
+            weight: parseFloat(s.weight) || 0,
+            reps: parseInt(s.reps, 10) || 0,
+            done: !!s.done
+          }));
+        return {
+          name: ex.name,
+          sets: loggedSets
+        };
+      })
+      .filter(ex => ex.sets.length > 0);
+
+    if (structuredExercises.length === 0) {
+      return Alert.alert(
+        'Nothing Logged',
+        'Enter weight or reps for at least one set before saving. Empty exercises are not saved.'
+      );
+    }
 
     const targetDate = (isEditingSavedWorkout && editingHistoryDate) ? editingHistoryDate : todayStr;
     const existingSessions = getSessionsForDate(history, targetDate);
@@ -3259,7 +3296,7 @@ export default function App() {
                             </Text>
                           </View>
                           <Text style={{ color: THEME.textMuted, fontSize: 12, marginTop: 4 }}>
-                            {item.exercises ? item.exercises.length : 0} Exercises
+                            {(item.exercises || []).filter(exerciseHasLoggedWork).length} Exercises
                             {formatWorkoutDurationLabel(item.durationSeconds)
                               ? ` · ${formatWorkoutDurationLabel(item.durationSeconds)}`
                               : ''}
@@ -3753,8 +3790,9 @@ export default function App() {
                       </View>
                     ) : null}
 
-                    {session.exercises?.map((ex, exIdx) => {
+                    {session.exercises?.filter(exerciseHasLoggedWork).map((ex, exIdx) => {
                       const pastSets = getPreviousPerformance(ex.name, selectedHistoryDate);
+                      const loggedSets = getLoggedSets(ex.sets);
 
                       return (
                         <View key={exIdx} style={{ marginBottom: 16, padding: 10, backgroundColor: THEME.surfaceLight, borderRadius: 8 }}>
@@ -3770,7 +3808,7 @@ export default function App() {
                             </View>
                           </TouchableOpacity>
 
-                          {ex.sets?.map((set, sIdx) => {
+                          {loggedSets.map((set, sIdx) => {
                             let diffTag = null;
 
                             if (pastSets && pastSets[sIdx]) {
