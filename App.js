@@ -446,7 +446,8 @@ const getHabitStreak = (historyObj = {}) => {
 };
 
 const getGymDayStreak = (historyObj = {}) => {
-  const hasWorkout = (dateStr) => getSessionsForDate(historyObj, dateStr).length > 0;
+  const hasWorkout = (dateStr) =>
+    getSessionsForDate(historyObj, dateStr).some(sessionHasPerformedWork);
   const cursor = new Date();
   const todayStr = getLocalDateString(cursor);
   if (!hasWorkout(todayStr)) {
@@ -476,7 +477,7 @@ const getBestGymWeek = (historyObj = {}) => {
     let count = 0;
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const key = getLocalDateString(d);
-      if (getSessionsForDate(historyObj, key).length > 0) count += 1;
+      if (getSessionsForDate(historyObj, key).some(sessionHasPerformedWork)) count += 1;
     }
     if (count > best.count) {
       best = {
@@ -493,6 +494,24 @@ const emptySet = (weight = '', reps = '') => ({ weight, reps, done: false });
 
 const buildEmptySets = (count) =>
   Array.from({ length: Math.max(1, count || 1) }, () => emptySet());
+
+/** Only sets with entered weight > 0 and/or reps > 0 count as work done */
+const isSetPerformed = (set) => {
+  if (!set) return false;
+  const weight = parseFloat(set.weight);
+  const reps = parseInt(set.reps, 10);
+  const hasWeight = !Number.isNaN(weight) && weight > 0;
+  const hasReps = !Number.isNaN(reps) && reps > 0;
+  return hasWeight || hasReps;
+};
+
+const getPerformedSets = (sets) =>
+  (Array.isArray(sets) ? sets : []).filter(isSetPerformed);
+
+const exerciseWasPerformed = (ex) => getPerformedSets(ex?.sets).length > 0;
+
+const sessionHasPerformedWork = (session) =>
+  (session?.exercises || []).some(exerciseWasPerformed);
 
 const formatTimerString = (totalSeconds) => {
   const mins = Math.floor(totalSeconds / 60);
@@ -529,9 +548,10 @@ const getSessionsForDate = (historyObj, dateStr) => {
 };
 
 const getBestSetFromSets = (sets) => {
-  if (!Array.isArray(sets) || sets.length === 0) return null;
+  const performed = getPerformedSets(sets);
+  if (performed.length === 0) return null;
   let best = null;
-  sets.forEach((set) => {
+  performed.forEach((set) => {
     const weight = parseFloat(set.weight) || 0;
     const reps = parseInt(set.reps, 10) || 0;
     if (!best) {
@@ -557,10 +577,11 @@ const buildExerciseProgressSeries = (historyObj, exerciseName, limit = 12) => {
         const match = (session.exercises || []).find(
           (ex) => (ex.name || '').toLowerCase() === key
         );
-        if (!match) return;
-        const best = getBestSetFromSets(match.sets);
+        if (!match || !exerciseWasPerformed(match)) return;
+        const performedSets = getPerformedSets(match.sets);
+        const best = getBestSetFromSets(performedSets);
         if (!best) return;
-        const volume = (match.sets || []).reduce(
+        const volume = performedSets.reduce(
           (sum, s) => sum + ((parseFloat(s.weight) || 0) * (parseInt(s.reps, 10) || 0)),
           0
         );
@@ -572,7 +593,7 @@ const buildExerciseProgressSeries = (historyObj, exerciseName, limit = 12) => {
           maxWeight: best.weight,
           bestReps: best.reps,
           volume,
-          setCount: Array.isArray(match.sets) ? match.sets.length : 0
+          setCount: performedSets.length
         });
       });
     });
@@ -887,7 +908,7 @@ export default function App() {
   const todayHistoryEntry = todayHistorySessions[todayHistorySessions.length - 1] || null;
 
   const isTodayCompleted = useMemo(() => {
-    return todayHistorySessions.length > 0 && !isEditingSavedWorkout;
+    return todayHistorySessions.some(sessionHasPerformedWork) && !isEditingSavedWorkout;
   }, [todayHistorySessions, isEditingSavedWorkout]);
 
   const gymStreak = useMemo(() => getGymDayStreak(history), [history]);
@@ -907,6 +928,7 @@ export default function App() {
       daySessions.forEach((entry) => {
         const sessionTimestamp = entry.timestamp || 0;
         (entry.exercises || []).forEach((ex) => {
+          if (!exerciseWasPerformed(ex)) return;
           const category = resolveExerciseCategory(ex.name);
           if (!category || !RECOVERY_CATEGORIES.includes(category)) return;
           const current = latestCategoryTimestamp[category];
@@ -958,9 +980,10 @@ export default function App() {
       const sessions = getSessionsForDate(history, dateStr);
       sessions.forEach((entry) => {
         (entry.exercises || []).forEach((ex) => {
+          if (!exerciseWasPerformed(ex)) return;
           const category = resolveExerciseCategory(ex.name);
           if (!category || !Object.prototype.hasOwnProperty.call(counts, category)) return;
-          counts[category] += Array.isArray(ex.sets) ? ex.sets.length : 0;
+          counts[category] += getPerformedSets(ex.sets).length;
         });
       });
     });
@@ -1072,15 +1095,17 @@ export default function App() {
 
     dates.forEach((dateStr) => {
       const sessions = getSessionsForDate(history, dateStr);
-      if (sessions.length > 0) workoutDays += 1;
-      totalSessions += sessions.length;
-      sessions.forEach((session) => {
+      const performedSessions = sessions.filter(sessionHasPerformedWork);
+      if (performedSessions.length > 0) workoutDays += 1;
+      totalSessions += performedSessions.length;
+      performedSessions.forEach((session) => {
         totalWorkoutSeconds += Math.max(0, parseInt(session.durationSeconds, 10) || 0);
         (session.exercises || []).forEach((ex) => {
+          if (!exerciseWasPerformed(ex)) return;
           totalExercises += 1;
           const category = resolveExerciseCategory(ex.name);
           if (category && Object.prototype.hasOwnProperty.call(setsByMuscle, category)) {
-            setsByMuscle[category] += Array.isArray(ex.sets) ? ex.sets.length : 0;
+            setsByMuscle[category] += getPerformedSets(ex.sets).length;
           }
         });
       });
@@ -1143,8 +1168,8 @@ export default function App() {
         const foundEx = pastEntry.exercises?.find(
           e => e.name.toLowerCase() === exerciseName.toLowerCase()
         );
-        if (foundEx && foundEx.sets) {
-          return foundEx.sets;
+        if (foundEx && exerciseWasPerformed(foundEx)) {
+          return getPerformedSets(foundEx.sets);
         }
       }
     }
@@ -1348,17 +1373,27 @@ export default function App() {
   };
 
   const persistWorkoutToHistory = (routineName, color, exercisesList) => {
-    const structuredExercises = exercisesList.map(ex => {
-      const setsFilled = activeWorkoutLogs[ex.id] || [];
-      return {
-        name: ex.name,
-        sets: setsFilled.map(s => ({
+    const structuredExercises = exercisesList
+      .map(ex => {
+        const setsFilled = activeWorkoutLogs[ex.id] || [];
+        const performedSets = getPerformedSets(setsFilled).map(s => ({
           weight: parseFloat(s.weight) || 0,
           reps: parseInt(s.reps, 10) || 0,
           done: !!s.done
-        }))
-      };
-    });
+        }));
+        return {
+          name: ex.name,
+          sets: performedSets
+        };
+      })
+      .filter(ex => ex.sets.length > 0);
+
+    if (structuredExercises.length === 0) {
+      return Alert.alert(
+        'Nothing to save',
+        'Enter weight or reps on at least one set. Empty exercises are ignored.'
+      );
+    }
 
     const targetDate = (isEditingSavedWorkout && editingHistoryDate) ? editingHistoryDate : todayStr;
     const existingSessions = getSessionsForDate(history, targetDate);
@@ -3209,7 +3244,7 @@ export default function App() {
                       {generateHeatmapDates().map((week, wIdx) => (
                         <View key={wIdx} style={{ marginRight: 4 }}>
                           {week.map((dateStr) => {
-                            const daySessions = getSessionsForDate(history, dateStr);
+                            const daySessions = getSessionsForDate(history, dateStr).filter(sessionHasPerformedWork);
                             const latestSession = daySessions[daySessions.length - 1];
                             const isLogged = daySessions.length > 0;
                             const cellColor = isLogged ? (latestSession?.color || THEME.success) : THEME.surfaceLight;
