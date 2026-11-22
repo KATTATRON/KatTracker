@@ -1,9 +1,12 @@
 {
-  "buildCommand": "expo export -p web",
+  "buildCommand": "expo export -p web && node scripts/postbuild.js",
   "outputDirectory": "dist",
   "cleanUrls": true,
   "framework": null,
   "rewrites": [
-    { "source": "/:path*", "destination": "/" }
+    {
+      "source": "/((?!.*\\.(?:png|json|js|ico|map|ttf|css)$).*)",
+      "destination": "/"
+    }
   ]
 }
