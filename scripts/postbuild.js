@@ -3,6 +3,7 @@ const fs = require('fs');
 const file = 'dist/index.html';
 let html = fs.readFileSync(file, 'utf8');
 const tags = `
+<style>html,body{background:#0B0B14;}</style>
 <title>KatTracker</title>
 <link rel="icon" type="image/png" href="/favicon.png" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

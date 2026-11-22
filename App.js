@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Prefer Expo/community safe-area insets — RN SafeAreaView often draws a white top hairline on iOS
 let useSafeAreaInsets = () => ({
-  top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 47,
+  top: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : (Platform.OS === 'web' ? 12 : 47),
   bottom: Platform.OS === 'ios' ? 20 : 0,
   left: 0,
   right: 0
@@ -4347,7 +4347,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     maxWidth: 560,
-    alignSelf: 'center',
+    marginHorizontal: 'auto',
     backgroundColor: THEME.background,
   },
   statusBarFill: {
