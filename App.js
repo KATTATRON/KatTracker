@@ -52,17 +52,41 @@ try {
 
 // --- CONSTANTS & CONFIG ---
 const THEME = {
-  background: '#121212',
-  surface: '#1E1E1E',
-  surfaceLight: '#2A2A2A',
-  accent: '#6366F1',
-  accentMuted: 'rgba(99, 102, 241, 0.2)',
-  text: '#FFFFFF',
-  textMuted: '#A0A0A0',
-  border: '#2E2E2E',
-  success: '#10B981',
-  successMuted: 'rgba(16, 185, 129, 0.15)',
+  background: '#0B0B14',
+  surface: '#15151F',
+  surfaceLight: '#1F1F2D',
+  surfaceRaised: '#262638',
+  accent: '#8B5CF6',
+  accentAlt: '#22D3EE',
+  accentMuted: 'rgba(139, 92, 246, 0.18)',
+  text: '#F5F5FA',
+  textMuted: '#8E8EA8',
+  border: '#26263A',
+  success: '#34D399',
+  successMuted: 'rgba(52, 211, 153, 0.15)',
 };
+
+const SHADOW_CARD = Platform.select({
+  web: { boxShadow: '0 8px 24px rgba(0,0,0,0.35)' },
+  default: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+});
+
+const SHADOW_GLOW = Platform.select({
+  web: { boxShadow: '0 6px 20px rgba(139,92,246,0.45)' },
+  default: {
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+});
 
 const ROUTINE_COLORS = {
   Blue: '#3B82F6',
@@ -4341,15 +4365,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: THEME.border,
     backgroundColor: THEME.background,
+    paddingVertical: 14,
+    borderBottomColor: 'transparent',
   },
   headerTitle: {
     color: THEME.text,
-    fontSize: 20,
     fontWeight: '800',
+    fontSize: 24,
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
     color: THEME.textMuted,
@@ -4366,10 +4391,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: THEME.accent,
-    borderRadius: 10,
-    paddingVertical: 14,
     marginBottom: 12,
     marginTop: 4,
+    borderRadius: 18,
+    paddingVertical: 16,
+    ...SHADOW_GLOW,
   },
   spontaneousLaunchBtnText: {
     color: '#FFF',
@@ -4389,12 +4415,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: THEME.border,
     paddingVertical: 10,
-    borderRadius: 8,
     marginRight: 8,
+    borderRadius: 14,
   },
   historyPaneBtnActive: {
     backgroundColor: THEME.accent,
     borderColor: THEME.accent,
+    ...SHADOW_GLOW,
   },
   historyPaneBtnText: {
     color: THEME.textMuted,
@@ -4414,14 +4441,15 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.surface,
     borderWidth: 1,
     borderColor: THEME.border,
-    borderRadius: 8,
     paddingVertical: 9,
     alignItems: 'center',
     marginRight: 8,
+    borderRadius: 14,
   },
   todayPaneBtnActive: {
     backgroundColor: THEME.accent,
     borderColor: THEME.accent,
+    ...SHADOW_GLOW,
   },
   todayPaneBtnText: {
     color: THEME.textMuted,
@@ -4432,12 +4460,13 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   recoveryPanelCard: {
-    backgroundColor: '#1D1D26',
-    borderRadius: 22,
+    backgroundColor: THEME.surface,
     padding: 18,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A2A35',
+    borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   recoveryPanelTitle: {
     color: THEME.text,
@@ -4445,7 +4474,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   recoveryDetailsLink: {
-    color: '#4F8DFF',
+    color: THEME.accentAlt,
     fontSize: 15,
     fontWeight: '700',
   },
@@ -4464,7 +4493,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#2C2C38',
+    backgroundColor: THEME.surfaceRaised,
     overflow: 'hidden',
     marginHorizontal: 10,
   },
@@ -4513,12 +4542,13 @@ const styles = StyleSheet.create({
     width: 12,
   },
   weeklySetsCard: {
-    backgroundColor: '#1D1D26',
-    borderRadius: 22,
+    backgroundColor: THEME.surface,
     padding: 18,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A2A35',
+    borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   weeklySetsTitle: {
     color: THEME.text,
@@ -4546,7 +4576,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#2C2C38',
+    backgroundColor: THEME.surfaceRaised,
     overflow: 'hidden',
     marginHorizontal: 10,
   },
@@ -4562,28 +4592,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   healthCard: {
-    backgroundColor: '#1D1D26',
-    borderRadius: 22,
+    backgroundColor: THEME.surface,
     padding: 18,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A2A35',
+    borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   motivationCard: {
-    backgroundColor: '#1D1D26',
-    borderRadius: 22,
+    backgroundColor: THEME.surface,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A2A35',
+    borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   reportCard: {
-    backgroundColor: '#1D1D26',
-    borderRadius: 18,
+    backgroundColor: THEME.surface,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A2A35',
+    borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   reportCardTitle: {
     color: THEME.text,
@@ -4692,11 +4725,11 @@ const styles = StyleSheet.create({
   },
   proteinGoalBtn: {
     backgroundColor: THEME.surfaceLight,
-    borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
     borderColor: THEME.border,
+    borderRadius: 12,
   },
   proteinGoalBtnText: {
     color: THEME.text,
@@ -4721,7 +4754,7 @@ const styles = StyleSheet.create({
   proteinProgressTrack: {
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#2C2C38',
+    backgroundColor: THEME.surfaceRaised,
     overflow: 'hidden',
     marginTop: 12,
   },
@@ -4742,12 +4775,12 @@ const styles = StyleSheet.create({
   proteinQuickBtn: {
     flex: 1,
     backgroundColor: THEME.surfaceLight,
-    borderRadius: 8,
     paddingVertical: 8,
     alignItems: 'center',
     marginRight: 8,
     borderWidth: 1,
     borderColor: THEME.border,
+    borderRadius: 12,
   },
   proteinQuickBtnText: {
     color: THEME.text,
@@ -4755,12 +4788,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   habitStreakBoard: {
-    backgroundColor: '#1D1D26',
-    borderRadius: 16,
+    backgroundColor: THEME.surface,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A2A35',
+    borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   habitStreakBoardTitle: {
     color: THEME.text,
@@ -4911,8 +4945,8 @@ const styles = StyleSheet.create({
   },
   sleepBarFill: {
     width: '100%',
-    borderRadius: 6,
     minHeight: 2,
+    borderRadius: 8,
   },
   sleepBarLabel: {
     color: THEME.textMuted,
@@ -4969,8 +5003,8 @@ const styles = StyleSheet.create({
   },
   weightBarFill: {
     width: '100%',
-    borderRadius: 6,
     minHeight: 2,
+    borderRadius: 8,
   },
   noteLabel: {
     color: THEME.textMuted,
@@ -4998,12 +5032,13 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   supplementsCard: {
-    backgroundColor: '#1D1D26',
-    borderRadius: 22,
+    backgroundColor: THEME.surface,
     padding: 18,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A2A35',
+    borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   supplementsTitle: {
     color: THEME.text,
@@ -5016,7 +5051,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(79, 141, 255, 0.15)',
+    backgroundColor: 'rgba(34, 211, 238, 0.15)',
   },
   suppEmptyText: {
     color: THEME.textMuted,
@@ -5034,14 +5069,14 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#555',
+    borderColor: THEME.textMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   suppCheckTaken: {
-    backgroundColor: '#4F8DFF',
-    borderColor: '#4F8DFF',
+    backgroundColor: THEME.accentAlt,
+    borderColor: THEME.accentAlt,
   },
   suppTextCol: {
     flex: 1,
@@ -5058,26 +5093,28 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: 16,
-    paddingBottom: 80,
+    paddingBottom: 120,
   },
   viewTitle: {
     color: THEME.text,
-    fontSize: 22,
-    fontWeight: '700',
     marginBottom: 16,
+    fontSize: 30,
+    fontWeight: '800',
+    letterSpacing: -0.6,
   },
   card: {
     backgroundColor: THEME.surface,
-    borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   cardTitle: {
     color: THEME.text,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
   },
   cardMutedText: {
     color: THEME.textMuted,
@@ -5135,11 +5172,12 @@ const styles = StyleSheet.create({
   },
   completedBannerCard: {
     backgroundColor: THEME.surface,
-    borderRadius: 12,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: THEME.success,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   completedBannerTitle: {
     color: THEME.text,
@@ -5154,9 +5192,10 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: THEME.accent,
-    borderRadius: 8,
     paddingVertical: 12,
     alignItems: 'center',
+    borderRadius: 16,
+    ...SHADOW_GLOW,
   },
   primaryButtonText: {
     color: '#FFF',
@@ -5167,9 +5206,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: THEME.accent,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   smallAccentBtnText: {
     color: '#FFF',
@@ -5183,10 +5222,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: THEME.surface,
     padding: 14,
-    borderRadius: 10,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: THEME.border,
+    borderRadius: 20,
+    ...SHADOW_CARD,
   },
   dayText: {
     color: THEME.text,
@@ -5197,7 +5237,7 @@ const styles = StyleSheet.create({
     backgroundColor: THEME.surfaceLight,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
+    borderRadius: 12,
   },
   heatmapCell: {
     width: 14,
@@ -5207,16 +5247,17 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(5,5,12,0.8)',
     justifyContent: 'center',
     padding: 16,
   },
   modalContainer: {
     backgroundColor: THEME.surface,
-    borderRadius: 14,
-    padding: 16,
     borderWidth: 1,
     borderColor: THEME.border,
+    borderRadius: 26,
+    padding: 20,
+    ...SHADOW_CARD,
   },
   modalHeaderRow: {
     flexDirection: 'row',
@@ -5226,8 +5267,8 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: THEME.text,
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
   },
   inputLabel: {
     color: THEME.textMuted,
@@ -5238,11 +5279,13 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: THEME.surfaceLight,
     color: THEME.text,
-    borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
     marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
   },
   colorDot: {
     width: 28,
@@ -5359,10 +5402,10 @@ const styles = StyleSheet.create({
   },
   suggestionsContainer: {
     backgroundColor: THEME.surfaceLight,
-    borderRadius: 8,
     marginBottom: 8,
     borderWidth: 1,
     borderColor: THEME.border,
+    borderRadius: 12,
   },
   suggestionItem: {
     padding: 10,
@@ -5389,7 +5432,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   prevSetLine: {
-    color: '#666',
+    color: THEME.textMuted,
     fontSize: 10,
     marginLeft: 43,
     marginBottom: 6,
@@ -5397,12 +5440,12 @@ const styles = StyleSheet.create({
   setAdjustBtn: {
     width: 26,
     height: 26,
-    borderRadius: 6,
     borderWidth: 1,
     borderColor: THEME.border,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: THEME.surfaceLight,
+    borderRadius: 12,
   },
   logMetricsRowHeader: {
     flexDirection: 'row',
@@ -5444,7 +5487,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   logInputDisabled: {
-    backgroundColor: '#222',
+    backgroundColor: THEME.surfaceRaised,
   },
   timerTriggerBtn: {
     width: 28,
@@ -5461,12 +5504,12 @@ const styles = StyleSheet.create({
   timerPresetBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 6,
     backgroundColor: THEME.surfaceLight,
     marginRight: 6,
     marginBottom: 6,
     borderWidth: 1,
     borderColor: THEME.border,
+    borderRadius: 12,
   },
   timerPresetBtnActive: {
     backgroundColor: THEME.accentMuted,
@@ -5641,8 +5684,8 @@ const styles = StyleSheet.create({
   exChartBarFill: {
     width: '100%',
     backgroundColor: THEME.accent,
-    borderRadius: 8,
     minHeight: 4,
+    borderRadius: 8,
   },
   exChartBarDate: {
     color: THEME.textMuted,
@@ -5736,22 +5779,26 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: THEME.surface,
-    borderTopWidth: 1,
-    borderTopColor: THEME.border,
-    paddingVertical: 8,
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    backgroundColor: 'rgba(21,21,31,0.96)',
+    borderTopWidth: 0,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 28,
+    left: 14,
+    right: 14,
+    bottom: 14,
+    paddingVertical: 10,
+    ...SHADOW_CARD,
   },
   tabItem: {
     alignItems: 'center',
   },
   tabLabel: {
     color: THEME.textMuted,
-    fontSize: 10,
     marginTop: 2,
+    fontSize: 11,
+    fontWeight: '600',
   },
   tabLabelActive: {
     color: THEME.accent,
