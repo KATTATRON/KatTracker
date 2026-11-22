@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,7 +11,8 @@ import {
   StatusBar,
   Platform,
   Vibration,
-  Image
+  Image,
+  Animated
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -625,6 +626,7 @@ const buildExerciseProgressSeries = (historyObj, exerciseName, limit = 12) => {
           maxWeight: best.weight,
           bestReps: best.reps,
           volume,
+          e1rm: Math.max(...performedSets.map((x) => calcE1RM(x.weight, x.reps))),
           setCount: performedSets.length
         });
       });
@@ -632,6 +634,166 @@ const buildExerciseProgressSeries = (historyObj, exerciseName, limit = 12) => {
 
   return points.slice(-Math.max(1, limit));
 };
+
+
+// --- HAPTICS / PR / OVERLOAD / WEEKLY HELPERS ---
+const haptic = (pattern = 10) => {
+  try { Vibration.vibrate(pattern); } catch (e) { /* ignore */ }
+};
+
+// Epley estimated one-rep max
+const calcE1RM = (weight, reps) => {
+  const w = parseFloat(weight) || 0;
+  const r = parseInt(reps, 10) || 0;
+  if (w <= 0 || r <= 0) return 0;
+  return r === 1 ? w : w * (1 + r / 30);
+};
+
+const roundTo = (n, step = 0.5) => Math.round(n / step) * step;
+const fmtKg = (n) => (Math.round(n * 10) / 10).toString();
+
+// Best weight + best e1RM ever logged for an exercise (null when no history)
+const getExerciseRecords = (historyObj, exerciseName) => {
+  if (!exerciseName) return null;
+  const key = exerciseName.toLowerCase();
+  let maxWeight = 0;
+  let e1rm = 0;
+  Object.keys(historyObj || {}).forEach((dateStr) => {
+    getSessionsForDate(historyObj, dateStr).forEach((session) => {
+      (session.exercises || []).forEach((ex) => {
+        if ((ex.name || '').toLowerCase() !== key) return;
+        getPerformedSets(ex.sets).forEach((set) => {
+          const w = parseFloat(set.weight) || 0;
+          maxWeight = Math.max(maxWeight, w);
+          e1rm = Math.max(e1rm, calcE1RM(set.weight, set.reps));
+        });
+      });
+    });
+  });
+  if (maxWeight <= 0 && e1rm <= 0) return null;
+  return { maxWeight, e1rm };
+};
+
+const isNewRecord = (set, records) => {
+  if (!records) return false;
+  const w = parseFloat(set?.weight) || 0;
+  const r = parseInt(set?.reps, 10) || 0;
+  if (w <= 0 || r <= 0) return false;
+  return w > records.maxWeight || calcE1RM(w, r) > records.e1rm + 0.01;
+};
+
+// Progressive overload: hit 10+ reps -> add weight, otherwise add a rep
+const getOverloadSuggestion = (pastSets) => {
+  if (!pastSets || pastSets.length === 0) return null;
+  let top = null;
+  pastSets.forEach((s) => {
+    const weight = parseFloat(s.weight) || 0;
+    const reps = parseInt(s.reps, 10) || 0;
+    if (!top || weight > top.weight || (weight === top.weight && reps > top.reps)) top = { weight, reps };
+  });
+  if (!top || top.weight <= 0 || top.reps <= 0) return null;
+  if (top.reps >= 10) {
+    const inc = top.weight >= 20 ? 2.5 : 1;
+    return { weight: top.weight + inc, reps: 8, kind: 'weight' };
+  }
+  return { weight: top.weight, reps: top.reps + 1, kind: 'reps' };
+};
+
+const getWeeklyStats = (historyObj, weeks = 8) => {
+  const thisWeek = getWeekStartDate();
+  const buckets = [];
+  for (let i = weeks - 1; i >= 0; i -= 1) {
+    const start = new Date(thisWeek);
+    start.setDate(start.getDate() - i * 7);
+    buckets.push({ start, volume: 0, days: 0, label: `${start.getMonth() + 1}/${start.getDate()}` });
+  }
+  Object.keys(historyObj || {}).forEach((dateStr) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y) return;
+    const date = new Date(y, (m || 1) - 1, d || 1);
+    const idx = Math.floor((getWeekStartDate(date) - buckets[0].start) / (7 * 86400000) + 0.01);
+    if (idx < 0 || idx >= weeks) return;
+    const sessions = getSessionsForDate(historyObj, dateStr).filter(sessionHasPerformedWork);
+    if (!sessions.length) return;
+    buckets[idx].days += 1;
+    sessions.forEach((session) => {
+      (session.exercises || []).forEach((ex) => {
+        getPerformedSets(ex.sets).forEach((set) => {
+          buckets[idx].volume += (parseFloat(set.weight) || 0) * (parseInt(set.reps, 10) || 0);
+        });
+      });
+    });
+  });
+  return buckets;
+};
+
+// Spring "pop" when a set gets checked off
+function PopIcon({ active, children }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!active) return;
+    scale.setValue(0.5);
+    Animated.spring(scale, { toValue: 1, friction: 3, tension: 200, useNativeDriver: Platform.OS !== 'web' }).start();
+  }, [active]);
+  return <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>;
+}
+
+// Slide-in banner for PRs
+function PRBanner({ banner }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!banner) { anim.setValue(0); return; }
+    anim.setValue(0);
+    Animated.spring(anim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: Platform.OS !== 'web' }).start();
+  }, [banner]);
+  if (!banner) return null;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.prBanner,
+        { opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-30, 0] }) }, { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }] }
+      ]}
+    >
+      <Text style={styles.prBannerEmoji}>🏆</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.prBannerTitle}>{banner.title}</Text>
+        {banner.sub ? <Text style={styles.prBannerSub}>{banner.sub}</Text> : null}
+      </View>
+    </Animated.View>
+  );
+}
+
+// Segmented progress ring built from rotated ticks (no SVG needed)
+function GoalRing({ value, goal, size = 150 }) {
+  const TICKS = 40;
+  const pct = goal > 0 ? Math.min(1, value / goal) : 0;
+  const filled = Math.round(pct * TICKS);
+  const done = value >= goal && goal > 0;
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {Array.from({ length: TICKS }).map((_, i) => (
+        <View
+          key={i}
+          style={{
+            position: 'absolute', width: size, height: size, alignItems: 'center',
+            transform: [{ rotate: `${(360 / TICKS) * i}deg` }]
+          }}
+        >
+          <View
+            style={{
+              width: 5, height: 15, borderRadius: 3,
+              backgroundColor: i < filled ? (done ? THEME.success : THEME.accent) : THEME.surfaceRaised,
+              opacity: i < filled ? 0.55 + 0.45 * ((i + 1) / Math.max(1, filled)) : 1
+            }}
+          />
+        </View>
+      ))}
+      <Text style={styles.ringValue}>{value}<Text style={styles.ringGoal}>/{goal}</Text></Text>
+      <Text style={styles.ringLabel}>{done ? 'GOAL SMASHED' : 'THIS WEEK'}</Text>
+    </View>
+  );
+}
 
 // Shared set logger (same look as before, used by scheduled + spontaneous)
 function ExerciseSetLogger({
@@ -642,9 +804,36 @@ function ExerciseSetLogger({
   onToggleDone,
   onAddSet,
   onRemoveSet,
-  onTriggerTimer
+  onTriggerTimer,
+  records,
+  onPR
 }) {
   const rowCount = sets?.length || 0;
+  const suggestion = useMemo(() => getOverloadSuggestion(pastSets), [pastSets]);
+  const hasOpenSets = (sets || []).some((st) => !st.done);
+
+  const applySuggestion = () => {
+    if (!suggestion) return;
+    haptic(15);
+    (sets || []).forEach((st, idx) => {
+      if (st.done) return;
+      onUpdateCell(exercise.id, idx, 'weight', fmtKg(suggestion.weight));
+      onUpdateCell(exercise.id, idx, 'reps', String(suggestion.reps));
+    });
+  };
+
+  const handleToggle = (setIndex) => {
+    const st = sets?.[setIndex];
+    if (st && !st.done) {
+      if (isNewRecord(st, records)) {
+        haptic([0, 60, 40, 140]);
+        onPR && onPR(exercise.name, st);
+      } else {
+        haptic(12);
+      }
+    }
+    onToggleDone(exercise.id, setIndex);
+  };
 
   return (
     <View style={styles.exerciseLogBlock}>
@@ -669,6 +858,18 @@ function ExerciseSetLogger({
         <Text style={styles.prevHint}>No previous log for this exercise</Text>
       )}
 
+      {suggestion && hasOpenSets ? (
+        <TouchableOpacity style={styles.overloadChip} onPress={applySuggestion} activeOpacity={0.8}>
+          <Ionicons name="trending-up" size={14} color={THEME.accentAlt} />
+          <Text style={styles.overloadChipText}>
+            {suggestion.kind === 'weight'
+              ? `Ready to level up: ${fmtKg(suggestion.weight)} kg × ${suggestion.reps}`
+              : `Beat last time: ${fmtKg(suggestion.weight)} kg × ${suggestion.reps}`}
+          </Text>
+          <Text style={styles.overloadChipAction}>TAP TO FILL</Text>
+        </TouchableOpacity>
+      ) : null}
+
       <View style={[styles.logMetricsRowHeader, { marginBottom: 4, marginTop: 8 }]}>
         <Text style={[styles.columnLabel, { width: 35, textAlign: 'left' }]}>Set</Text>
         <Text style={[styles.columnLabel, { flex: 1, marginRight: 8 }]}>KG Weight</Text>
@@ -684,10 +885,12 @@ function ExerciseSetLogger({
             <View style={[styles.logMetricsRowHeader, { marginBottom: 4 }, isSetDone && styles.rowCompletedHighlight]}>
               <TouchableOpacity
                 style={[styles.setCheckBtn, isSetDone && styles.setCheckBtnActive]}
-                onPress={() => onToggleDone(exercise.id, setIndex)}
+                onPress={() => handleToggle(setIndex)}
               >
                 {isSetDone ? (
-                  <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
+                  <PopIcon active={isSetDone}>
+                    <Ionicons name="checkmark-sharp" size={14} color={THEME.text} />
+                  </PopIcon>
                 ) : (
                   <Text style={styles.setCheckText}>{setIndex + 1}</Text>
                 )}
@@ -714,9 +917,13 @@ function ExerciseSetLogger({
                   onChangeText={(val) => onUpdateCell(exercise.id, setIndex, 'reps', val)}
                 />
               </View>
-              <TouchableOpacity style={styles.timerTriggerBtn} onPress={onTriggerTimer}>
-                <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
-              </TouchableOpacity>
+              {isSetDone && isNewRecord(sets?.[setIndex], records) ? (
+                <View style={styles.prBadge}><Text style={styles.prBadgeText}>PR</Text></View>
+              ) : (
+                <TouchableOpacity style={styles.timerTriggerBtn} onPress={onTriggerTimer}>
+                  <Ionicons name="stopwatch-outline" size={16} color={THEME.accent} />
+                </TouchableOpacity>
+              )}
             </View>
             {past ? (
               <Text style={styles.prevSetLine}>
@@ -822,6 +1029,8 @@ export default function App() {
   const [compareMonthKey, setCompareMonthKey] = useState(null); // previous month being compared
   const [captureMonthKey, setCaptureMonthKey] = useState(null);
   const [photoPicking, setPhotoPicking] = useState(false);
+  const [prBanner, setPrBanner] = useState(null);
+  const [weeklyGoal, setWeeklyGoal] = useState(4);
 
   // Rest timer
   useEffect(() => {
@@ -858,7 +1067,36 @@ export default function App() {
 
   useEffect(() => {
     loadData();
+    AsyncStorage.getItem('@kat_tracker_weekly_goal_v1')
+      .then((v) => { const n = parseInt(v, 10); if (n >= 1 && n <= 7) setWeeklyGoal(n); })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!prBanner) return undefined;
+    const id = setTimeout(() => setPrBanner(null), 3800);
+    return () => clearTimeout(id);
+  }, [prBanner]);
+
+  const changeWeeklyGoal = (delta) => {
+    const next = Math.min(7, Math.max(1, weeklyGoal + delta));
+    setWeeklyGoal(next);
+    haptic(8);
+    AsyncStorage.setItem('@kat_tracker_weekly_goal_v1', String(next)).catch(() => {});
+  };
+
+  const weeklyStats = useMemo(() => getWeeklyStats(history, 8), [history]);
+  const weeklyMaxVolume = Math.max(1, ...weeklyStats.map((w) => w.volume));
+  const daysThisWeek = weeklyStats[weeklyStats.length - 1]?.days || 0;
+
+  const getRecords = (name) => getExerciseRecords(history, name);
+  const handlePR = (name, set) => {
+    setPrBanner({
+      id: Date.now(),
+      title: 'NEW PR!',
+      sub: `${name} · ${set.weight} kg × ${set.reps} (est. 1RM ${fmtKg(calcE1RM(set.weight, set.reps))} kg)`
+    });
+  };
 
   const loadData = async () => {
     try {
@@ -1463,8 +1701,17 @@ export default function App() {
       [targetDate]: nextSessions
     };
 
+    const prCount = structuredExercises.filter((ex) => {
+      const rec = getExerciseRecords(history, ex.name);
+      return ex.sets.some((st) => isNewRecord(st, rec));
+    }).length;
+
     setHistory(updatedHistory);
     saveData(STORAGE_KEYS.HISTORY, updatedHistory);
+    haptic(prCount > 0 ? [0, 80, 50, 80, 50, 200] : [0, 40, 30, 40]);
+    if (prCount > 0) {
+      setPrBanner({ id: Date.now(), title: `${prCount} new PR${prCount === 1 ? '' : 's'} this workout!`, sub: 'Absolute beast mode.' });
+    }
     setIsEditingSavedWorkout(false);
     setEditingSessionIndex(null);
     setEditingHistoryDate(null);
@@ -2390,7 +2637,8 @@ export default function App() {
     onToggleDone: handleToggleSetComplete,
     onAddSet: handleAddSet,
     onRemoveSet: handleRemoveSet,
-    onTriggerTimer: handleTriggerTimer
+    onTriggerTimer: handleTriggerTimer,
+    onPR: handlePR
   };
 
   if (loading) {
@@ -2434,6 +2682,7 @@ export default function App() {
         </View>
       </View>
 
+      <PRBanner banner={prBanner} />
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
 
         {currentTab === 'today' && (
@@ -2457,6 +2706,50 @@ export default function App() {
 
             {todayPane === 'stats' ? (
               <>
+                <View style={styles.motivationCard}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.motivationTitle}>Weekly Goal</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <TouchableOpacity style={styles.proteinGoalBtn} onPress={() => changeWeeklyGoal(-1)}>
+                        <Text style={styles.proteinGoalBtnText}>−</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.goalDaysText}>{weeklyGoal} days</Text>
+                      <TouchableOpacity style={styles.proteinGoalBtn} onPress={() => changeWeeklyGoal(1)}>
+                        <Text style={styles.proteinGoalBtnText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={{ alignItems: 'center', marginTop: 6 }}>
+                    <GoalRing value={daysThisWeek} goal={weeklyGoal} />
+                    <Text style={styles.ringHint}>
+                      {daysThisWeek >= weeklyGoal
+                        ? 'Goal hit. Rest up or go for extra credit.'
+                        : `${weeklyGoal - daysThisWeek} more gym day${weeklyGoal - daysThisWeek === 1 ? '' : 's'} to go`}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.motivationCard}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.motivationTitle}>Weekly Volume</Text>
+                    <Text style={styles.cardMutedText}>kg lifted · last 8 wks</Text>
+                  </View>
+                  <View style={styles.volRow}>
+                    {weeklyStats.map((w, i) => {
+                      const isNow = i === weeklyStats.length - 1;
+                      return (
+                        <View key={w.label} style={styles.volCol}>
+                          <Text style={styles.volValue}>{w.volume > 0 ? (w.volume >= 1000 ? `${(w.volume / 1000).toFixed(1)}k` : Math.round(w.volume)) : ''}</Text>
+                          <View style={styles.volTrack}>
+                            <View style={[styles.volFill, { height: `${Math.max(w.volume > 0 ? 6 : 0, (w.volume / weeklyMaxVolume) * 100)}%`, backgroundColor: isNow ? THEME.accent : THEME.accentAlt, opacity: isNow ? 1 : 0.55 }]} />
+                          </View>
+                          <Text style={[styles.volLabel, isNow && { color: THEME.text }]}>{w.label}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+
                 <View style={styles.motivationCard}>
                   <Text style={styles.motivationTitle}>Motivation</Text>
                   <View style={styles.motivationRow}>
@@ -2933,6 +3226,7 @@ export default function App() {
                         exercise={ex}
                         sets={activeWorkoutLogs[ex.id]}
                         pastSets={getPreviousPerformance(ex.name, editingHistoryDate || todayStr)}
+                        records={getRecords(ex.name)}
                         {...loggerProps}
                       />
                     ))}
@@ -3120,6 +3414,7 @@ export default function App() {
                             exercise={ex}
                             sets={activeWorkoutLogs[ex.id]}
                             pastSets={getPreviousPerformance(ex.name, todayStr)}
+                        records={getRecords(ex.name)}
                             {...loggerProps}
                           />
                         ))}
@@ -3130,6 +3425,7 @@ export default function App() {
                             exercise={ex}
                             sets={activeWorkoutLogs[ex.id]}
                             pastSets={getPreviousPerformance(ex.name, todayStr)}
+                        records={getRecords(ex.name)}
                             {...loggerProps}
                           />
                         ))}
@@ -3975,6 +4271,30 @@ export default function App() {
                           </View>
                           <Text style={styles.exChartBarDate}>{point.dateStr.slice(5)}</Text>
                           <Text style={styles.exChartBarReps}>{point.bestReps} reps</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+
+                <Text style={[styles.chartSectionLabel, { marginTop: 18 }]}>ESTIMATED 1RM</Text>
+                <Text style={styles.cardMutedText}>
+                  Best ever: {fmtKg(Math.max(...exerciseProgressSeries.map((pt) => pt.e1rm || 0)))} kg (Epley formula)
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                  <View style={styles.exChartBarsRow}>
+                    {exerciseProgressSeries.map((point) => {
+                      const maxE = Math.max(1, ...exerciseProgressSeries.map((pt) => pt.e1rm || 0));
+                      const pct = Math.max(8, Math.min(100, ((point.e1rm || 0) / maxE) * 100));
+                      const isBest = (point.e1rm || 0) >= maxE - 0.01;
+                      return (
+                        <View key={`e-${point.id}`} style={styles.exChartBarCol}>
+                          <Text style={styles.exChartBarValue}>{fmtKg(point.e1rm || 0)}</Text>
+                          <View style={styles.exChartBarTrack}>
+                            <View style={[styles.exChartBarFill, { height: `${pct}%`, backgroundColor: isBest ? THEME.success : THEME.accentAlt }]} />
+                          </View>
+                          <Text style={styles.exChartBarDate}>{point.dateStr.slice(5)}</Text>
+                          {isBest ? <Text style={[styles.exChartBarReps, { color: THEME.success }]}>🏆 PR</Text> : null}
                         </View>
                       );
                     })}
@@ -5808,4 +6128,56 @@ const styles = StyleSheet.create({
     color: THEME.accent,
     fontWeight: '700',
   },
+
+  prBanner: {
+    position: 'absolute',
+    top: 66,
+    left: 16,
+    right: 16,
+    zIndex: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2A1B55',
+    borderWidth: 1,
+    borderColor: THEME.accent,
+    borderRadius: 20,
+    padding: 14,
+    ...SHADOW_GLOW,
+  },
+  prBannerEmoji: { fontSize: 30, marginRight: 12 },
+  prBannerTitle: { color: '#FFF', fontSize: 17, fontWeight: '900', letterSpacing: 1 },
+  prBannerSub: { color: '#D9CCFF', fontSize: 12, marginTop: 2, fontWeight: '600' },
+  prBadge: {
+    width: 28,
+    height: 22,
+    borderRadius: 8,
+    backgroundColor: THEME.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '900' },
+  overloadChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(34, 211, 238, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 211, 238, 0.35)',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginTop: 8,
+  },
+  overloadChipText: { color: THEME.text, fontSize: 12, fontWeight: '700', marginLeft: 6, flex: 1 },
+  overloadChipAction: { color: THEME.accentAlt, fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
+  ringValue: { color: THEME.text, fontSize: 38, fontWeight: '900' },
+  ringGoal: { color: THEME.textMuted, fontSize: 20, fontWeight: '700' },
+  ringLabel: { color: THEME.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginTop: 2 },
+  ringHint: { color: THEME.textMuted, fontSize: 12, marginTop: 10, fontWeight: '600' },
+  goalDaysText: { color: THEME.text, fontWeight: '800', fontSize: 12, marginHorizontal: 8 },
+  volRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 14 },
+  volCol: { flex: 1, alignItems: 'center' },
+  volValue: { color: THEME.textMuted, fontSize: 9, fontWeight: '700', height: 14 },
+  volTrack: { width: 18, height: 90, justifyContent: 'flex-end', backgroundColor: THEME.surfaceLight, borderRadius: 9, overflow: 'hidden' },
+  volFill: { width: '100%', borderRadius: 9 },
+  volLabel: { color: THEME.textMuted, fontSize: 9, fontWeight: '600', marginTop: 6 },
 });

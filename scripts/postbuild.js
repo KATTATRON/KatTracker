@@ -14,5 +14,7 @@ const tags = `
 <meta name="apple-mobile-web-app-title" content="KatTracker" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 `;
-html = html.replace(/<title>.*?<\/title>/, '').replace('</head>', tags + '</head>');
+const SW = `<script>if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('/sw.js').catch(function () {}); }); }</script>
+`;
+html = html.replace(/<title>.*?<\/title>/, '').replace('</head>', tags + SW + '</head>');
 fs.writeFileSync(file, html);
