@@ -16,8 +16,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { THEME, withAlpha } from './theme';
-import { computeProfile, LevelPill, ProfileModal, WorkoutCompleteModal, buildSessionSummary } from './Profile';
+import { THEME, withAlpha, applyTheme } from './theme';
+import { computeProfile, rebuildProfileStyles, LevelPill, ProfileModal, WorkoutCompleteModal, buildSessionSummary } from './Profile';
 
 // Prefer Expo/community safe-area insets — RN SafeAreaView often draws a white top hairline on iOS
 let useSafeAreaInsets = () => ({
@@ -56,24 +56,25 @@ try {
 // --- CONSTANTS & CONFIG ---
 
 const SHADOW_CARD = Platform.select({
-  web: { boxShadow: '0 8px 24px rgba(0,0,0,0.35)' },
+  web: { boxShadow: '0 4px 12px rgba(0,0,0,0.25)' },
   default: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 3,
   },
 });
 
-const SHADOW_GLOW = Platform.select({
-  web: { boxShadow: `0 6px 20px ${withAlpha(THEME.accent, 0.45)}` },
+// Function so it always reflects the active theme colour
+const glowShadow = () => Platform.select({
+  web: { boxShadow: `0 4px 14px ${withAlpha(THEME.accent, 0.4)}` },
   default: {
     shadowColor: THEME.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 6,
   },
 });
 
@@ -1019,6 +1020,8 @@ export default function App() {
   const [photoPicking, setPhotoPicking] = useState(false);
   const [prBanner, setPrBanner] = useState(null);
   const [profileVisible, setProfileVisible] = useState(false);
+  const [, setThemeVersion] = useState(0);
+  const [logLimit, setLogLimit] = useState(25);
   const [completeData, setCompleteData] = useState(null);
   const [weeklyGoal, setWeeklyGoal] = useState(4);
 
@@ -1079,7 +1082,19 @@ export default function App() {
   const weeklyMaxVolume = Math.max(1, ...weeklyStats.map((w) => w.volume));
   const daysThisWeek = weeklyStats[weeklyStats.length - 1]?.days || 0;
 
-  const getRecords = (name) => getExerciseRecords(history, name);
+  const recordsCache = useMemo(() => ({}), [history]);
+  const getRecords = (name) => {
+    const k = (name || '').toLowerCase();
+    if (!(k in recordsCache)) recordsCache[k] = getExerciseRecords(history, name);
+    return recordsCache[k];
+  };
+
+  const handleThemeChange = (key) => {
+    if (!applyTheme(key)) return;
+    Object.assign(styles, buildStyles());
+    rebuildProfileStyles();
+    setThemeVersion((v) => v + 1);
+  };
   const handlePR = (name, set) => {
     setPrBanner({
       id: Date.now(),
@@ -3610,7 +3625,7 @@ export default function App() {
                 {Object.keys(history).length === 0 ? (
                   <Text style={{ color: THEME.textMuted }}>No history yet.</Text>
                 ) : (
-                  Object.keys(history).sort((a, b) => (a < b ? 1 : -1)).flatMap(dateKey => {
+                  Object.keys(history).sort((a, b) => (a < b ? 1 : -1)).slice(0, logLimit).flatMap(dateKey => {
                     const daySessions = getSessionsForDate(history, dateKey);
                     return daySessions.map((item, sessionIdx) => (
                       <View
@@ -3652,6 +3667,16 @@ export default function App() {
                     ));
                   })
                 )}
+                {Object.keys(history).length > logLimit ? (
+                  <TouchableOpacity
+                    style={[styles.assignBtn, { alignItems: 'center', paddingVertical: 12, marginTop: 4 }]}
+                    onPress={() => setLogLimit((n) => n + 25)}
+                  >
+                    <Text style={{ color: THEME.text, fontWeight: '700' }}>
+                      Show older workouts ({Object.keys(history).length - logLimit} more)
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </>
             ) : (
               <>
@@ -4379,7 +4404,7 @@ export default function App() {
         </View>
       </Modal>
 
-      <ProfileModal visible={profileVisible} onClose={() => setProfileVisible(false)} profile={profile} recovery={recoveryMatrix} />
+      <ProfileModal onThemeChange={handleThemeChange} visible={profileVisible} onClose={() => setProfileVisible(false)} profile={profile} recovery={recoveryMatrix} />
       <WorkoutCompleteModal data={completeData} onClose={() => setCompleteData(null)} />
 
       <Modal visible={weeklyReportVisible} animationType="slide" transparent>
@@ -4678,7 +4703,7 @@ export default function App() {
   );
 }
 
-const styles = StyleSheet.create({
+const buildStyles = () => StyleSheet.create({
   rootShell: {
     flex: 1,
     width: '100%',
@@ -4734,7 +4759,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     borderRadius: 18,
     paddingVertical: 16,
-    ...SHADOW_GLOW,
+    ...glowShadow(),
   },
   spontaneousLaunchBtnText: {
     color: '#FFF',
@@ -4760,7 +4785,7 @@ const styles = StyleSheet.create({
   historyPaneBtnActive: {
     backgroundColor: THEME.accent,
     borderColor: THEME.accent,
-    ...SHADOW_GLOW,
+    ...glowShadow(),
   },
   historyPaneBtnText: {
     color: THEME.textMuted,
@@ -4788,7 +4813,7 @@ const styles = StyleSheet.create({
   todayPaneBtnActive: {
     backgroundColor: THEME.accent,
     borderColor: THEME.accent,
-    ...SHADOW_GLOW,
+    ...glowShadow(),
   },
   todayPaneBtnText: {
     color: THEME.textMuted,
@@ -5449,7 +5474,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 20,
-    ...SHADOW_CARD,
   },
   cardTitle: {
     color: THEME.text,
@@ -5535,7 +5559,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     borderRadius: 16,
-    ...SHADOW_GLOW,
+    ...glowShadow(),
   },
   primaryButtonText: {
     color: '#FFF',
@@ -5566,7 +5590,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 20,
-    ...SHADOW_CARD,
   },
   dayText: {
     color: THEME.text,
@@ -6158,7 +6181,7 @@ const styles = StyleSheet.create({
     borderColor: THEME.accent,
     borderRadius: 20,
     padding: 14,
-    ...SHADOW_GLOW,
+    ...glowShadow(),
   },
   prBannerEmoji: { fontSize: 30, marginRight: 12 },
   prBannerTitle: { color: '#FFF', fontSize: 17, fontWeight: '900', letterSpacing: 1 },
@@ -6197,3 +6220,5 @@ const styles = StyleSheet.create({
   volFill: { width: '100%', borderRadius: 9 },
   volLabel: { color: THEME.textMuted, fontSize: 9, fontWeight: '600', marginTop: 6 },
 });
+
+const styles = buildStyles();

@@ -47,15 +47,14 @@ try {
 } catch (e) { /* ignore */ }
 Object.assign(THEME, THEMES[activeKey].colors);
 
-export const ACTIVE_THEME_KEY = activeKey;
+export const getActiveThemeKey = () => activeKey;
 
-// Returns true when the page was reloaded to apply the theme
-export const saveTheme = async (key) => {
+// Switch palette instantly (no reload). Callers must rebuild their styles afterwards.
+export const applyTheme = (key) => {
   if (!THEMES[key]) return false;
-  try { await AsyncStorage.setItem(THEME_STORAGE_KEY, key); } catch (e) { /* ignore */ }
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    window.location.reload();
-    return true;
-  }
-  return false;
+  activeKey = key;
+  Object.assign(THEME, THEMES[key].colors);
+  try { AsyncStorage.setItem(THEME_STORAGE_KEY, key); } catch (e) { /* ignore */ }
+  return true;
 };
+

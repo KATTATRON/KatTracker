@@ -5,7 +5,8 @@ import {
   StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal, Platform, Share, Animated, Easing
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { THEME, THEMES, ACTIVE_THEME_KEY, saveTheme, withAlpha } from './theme';
+import Svg, { Path, G, Circle, Ellipse, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { THEME, THEMES, getActiveThemeKey, withAlpha } from './theme';
 
 // ---------- small helpers ----------
 const sessionsOf = (history, dateStr) => {
@@ -201,7 +202,7 @@ const SHADOW = Platform.select({
   default: { shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 14, elevation: 6 }
 });
 
-const s = StyleSheet.create({
+const buildStyles = () => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(5,5,12,0.85)', justifyContent: 'center', padding: 12 },
   sheet: { backgroundColor: THEME.background, borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '94%', overflow: 'hidden', ...SHADOW },
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 8 },
@@ -234,6 +235,11 @@ const s = StyleSheet.create({
   mapToggleBtn: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 10 },
   mapToggleActive: { backgroundColor: THEME.accent },
   mapToggleText: { color: THEME.textMuted, fontSize: 12, fontWeight: '800' },
+  mapStage: { marginTop: 10, paddingVertical: 8, paddingHorizontal: 20, borderRadius: 24, backgroundColor: '#0E0E18', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 },
+  chip: { flexDirection: 'row', alignItems: 'center', borderRadius: 999, borderWidth: 1, borderColor: THEME.border, paddingVertical: 5, paddingHorizontal: 10, margin: 3 },
+  chipText: { color: THEME.textMuted, fontSize: 11, fontWeight: '700' },
+  mapInfo: { width: '100%', backgroundColor: THEME.surfaceLight, borderRadius: 16, padding: 14, marginTop: 12, minHeight: 64, justifyContent: 'center' },
   legendRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 10 },
   legendItem: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 8 },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 5 },
@@ -272,6 +278,9 @@ const s = StyleSheet.create({
   btnText: { color: '#FFF', fontWeight: '800', fontSize: 14 }
 });
 
+const s = buildStyles();
+export const rebuildProfileStyles = () => Object.assign(s, buildStyles());
+
 // ---------- components ----------
 export function LevelPill({ profile, onPress }) {
   return (
@@ -285,23 +294,80 @@ export function LevelPill({ profile, onPress }) {
 
 const statusLabel = { Ready: 'Ready to train', Recovering: 'Recovering', Fatigued: 'Fatigued' };
 
-// Body silhouette built from Views. Each region glows with its recovery colour.
+// ---- Anatomical muscle map (SVG). Left half is drawn, right half is mirrored. ----
+const MAP = {
+  base: {
+    head: null,
+    neutral: [
+      'M 54 150 C 48 168 46 186 46 204 C 50 210 58 210 60 204 C 62 186 64 168 62 152 Z', // forearm
+      'M 98 168 L 80 166 C 76 172 74 178 76 186 L 98 186 Z', // hips
+      'M 76 262 C 74 286 74 316 78 352 L 90 352 C 94 316 96 286 94 262 Z' // shin
+    ]
+  },
+  front: [
+    { cat: 'Shoulders', d: 'M 72 64 C 58 64 48 72 46 86 C 45 96 48 102 54 104 L 68 96 C 74 88 76 74 72 64 Z' },
+    { cat: 'Chest', d: 'M 98 70 L 76 68 C 72 76 70 90 76 100 C 84 108 94 106 98 102 Z' },
+    { cat: 'Core', d: 'M 98 108 L 84 110 C 82 130 84 150 88 166 L 98 170 Z', abs: true },
+    { cat: 'Core', d: 'M 82 112 C 76 128 76 150 82 166 L 86 164 C 82 150 82 130 84 112 Z' },
+    { cat: 'Biceps', d: 'M 54 106 C 46 112 42 128 44 146 C 46 152 54 152 58 148 C 62 132 62 116 58 106 Z' },
+    { cat: 'Legs', d: 'M 98 188 L 78 186 C 72 210 72 236 76 258 C 82 266 92 266 96 258 C 98 236 100 210 98 188 Z' }
+  ],
+  back: [
+    { cat: 'Back', d: 'M 98 50 L 82 62 C 78 68 84 76 98 84 Z' },
+    { cat: 'Shoulders', d: 'M 72 64 C 58 64 48 72 46 86 C 45 96 48 102 54 104 L 68 96 C 74 88 76 74 72 64 Z' },
+    { cat: 'Back', d: 'M 98 86 L 82 74 C 72 84 72 108 78 130 C 84 142 92 148 98 150 Z' },
+    { cat: 'Back', d: 'M 98 152 L 84 150 C 82 158 84 164 88 168 L 98 170 Z' },
+    { cat: 'Triceps', d: 'M 54 106 C 46 112 42 128 44 146 C 46 152 54 152 58 148 C 62 132 62 116 58 106 Z' },
+    { cat: 'Legs', d: 'M 98 170 L 80 168 C 74 178 76 192 84 198 C 92 202 98 198 98 196 Z' },
+    { cat: 'Legs', d: 'M 96 200 L 78 198 C 74 222 74 244 78 258 C 86 264 94 262 96 254 Z' },
+    { cat: 'Legs', d: 'M 78 262 C 72 282 74 306 82 338 L 90 338 C 96 306 98 282 94 262 Z' }
+  ]
+};
+
+const parseHex = (c) => (typeof c === 'string' && c[0] === '#' ? c : '#4B4B63');
+
 export function MuscleMap({ recovery }) {
   const [side, setSide] = useState('front');
   const [picked, setPicked] = useState(null);
   const by = {};
   (recovery || []).forEach((r) => { by[r.category] = r; });
-  const col = (c) => (by[c]?.color || THEME.surfaceRaised);
-  const Part = ({ cat, style }) => (
-    <TouchableOpacity
-      activeOpacity={0.8}
-      onPress={() => setPicked(cat)}
-      style={[{ position: 'absolute', backgroundColor: col(cat), opacity: picked && picked !== cat ? 0.55 : 1 },
-        Platform.OS === 'web' ? { boxShadow: `0 0 14px ${withAlpha(col(cat).startsWith('#') ? col(cat) : '#888888', 0.6)}` } : null, style]}
-    />
-  );
-  const skin = { position: 'absolute', backgroundColor: THEME.surfaceLight };
+  const parts = side === 'front' ? MAP.front : MAP.back;
   const info = picked ? by[picked] : null;
+
+  const renderHalf = (mirror) => (
+    <G transform={mirror ? 'translate(200,0) scale(-1,1)' : undefined} key={mirror ? 'r' : 'l'}>
+      {MAP.base.neutral.map((d, i) => (
+        <Path key={`n${i}`} d={d} fill="#1E1E2E" stroke="#2D2D44" strokeWidth="1" />
+      ))}
+      {/* hand + foot */}
+      <Ellipse cx="53" cy="214" rx="6" ry="9" fill="#1E1E2E" stroke="#2D2D44" strokeWidth="1" />
+      <Ellipse cx="83" cy="358" rx="10" ry="6" fill="#1E1E2E" stroke="#2D2D44" strokeWidth="1" />
+      {parts.map((p, i) => {
+        const color = parseHex(by[p.cat]?.color);
+        const active = picked === p.cat;
+        const dim = picked && !active;
+        return (
+          <G key={i} opacity={dim ? 0.45 : 1}>
+            {/* soft glow underlay */}
+            <Path d={p.d} fill="none" stroke={color} strokeWidth={active ? 9 : 6} strokeOpacity={active ? 0.5 : 0.28} strokeLinejoin="round" />
+            <Path
+              d={p.d}
+              fill={color}
+              fillOpacity={0.88}
+              stroke={active ? '#FFFFFF' : 'rgba(255,255,255,0.35)'}
+              strokeWidth={active ? 2 : 0.8}
+              strokeLinejoin="round"
+              onPress={() => setPicked(active ? null : p.cat)}
+            />
+            {p.abs ? [122, 136, 150].map((y) => (
+              <Line key={y} x1="86" y1={y} x2="98" y2={y} stroke="#0B0B14" strokeOpacity="0.55" strokeWidth="1.6" />
+            )) : null}
+          </G>
+        );
+      })}
+    </G>
+  );
+
   return (
     <View style={s.mapWrap}>
       <View style={s.mapToggle}>
@@ -311,66 +377,68 @@ export function MuscleMap({ recovery }) {
           </TouchableOpacity>
         ))}
       </View>
-      <View style={{ width: 220, height: 330, marginTop: 14 }}>
-        {/* head + neck */}
-        <View style={[skin, { left: 90, top: 0, width: 40, height: 44, borderRadius: 20 }]} />
-        <View style={[skin, { left: 102, top: 40, width: 16, height: 14, borderRadius: 4 }]} />
-        {/* torso base */}
-        <View style={[skin, { left: 62, top: 54, width: 96, height: 120, borderRadius: 22 }]} />
-        {side === 'front' ? (
+
+      <View style={s.mapStage}>
+        <Svg width={230} height={368} viewBox="0 0 200 372">
+          <Defs>
+            <LinearGradient id="headg" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="#2A2A40" />
+              <Stop offset="1" stopColor="#1E1E2E" />
+            </LinearGradient>
+          </Defs>
+          {/* head + neck */}
+          <Circle cx="100" cy="28" r="20" fill="url(#headg)" stroke="#2D2D44" strokeWidth="1" />
+          <Path d="M 92 46 L 108 46 L 110 60 L 90 60 Z" fill="#1E1E2E" stroke="#2D2D44" strokeWidth="1" />
+          {/* torso base so gaps between muscles aren't empty */}
+          <Path d="M 100 60 L 72 62 C 66 70 66 100 74 130 C 78 150 78 164 82 186 L 100 188 Z" fill="#171724" />
+          <Path d="M 100 60 L 128 62 C 134 70 134 100 126 130 C 122 150 122 164 118 186 L 100 188 Z" fill="#171724" />
+          {renderHalf(false)}
+          {renderHalf(true)}
+        </Svg>
+      </View>
+
+      <View style={s.chipRow}>
+        {RECOVERY_ORDER.map((cat) => {
+          const r = by[cat];
+          if (!r) return null;
+          const on = picked === cat;
+          return (
+            <TouchableOpacity key={cat} onPress={() => { setPicked(on ? null : cat); }} activeOpacity={0.8}
+              style={[s.chip, on && { borderColor: parseHex(r.color), backgroundColor: withAlpha(parseHex(r.color), 0.15) }]}>
+              <View style={[s.legendDot, { backgroundColor: parseHex(r.color) }]} />
+              <Text style={[s.chipText, on && { color: THEME.text }]}>{cat}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <View style={s.mapInfo}>
+        {info ? (
           <>
-            <Part cat="Shoulders" style={{ left: 36, top: 56, width: 36, height: 36, borderRadius: 18 }} />
-            <Part cat="Shoulders" style={{ left: 148, top: 56, width: 36, height: 36, borderRadius: 18 }} />
-            <Part cat="Chest" style={{ left: 74, top: 62, width: 34, height: 36, borderRadius: 14 }} />
-            <Part cat="Chest" style={{ left: 112, top: 62, width: 34, height: 36, borderRadius: 14 }} />
-            <Part cat="Core" style={{ left: 86, top: 104, width: 48, height: 66, borderRadius: 14 }} />
-            <Part cat="Biceps" style={{ left: 22, top: 96, width: 28, height: 62, borderRadius: 14 }} />
-            <Part cat="Biceps" style={{ left: 170, top: 96, width: 28, height: 62, borderRadius: 14 }} />
-            <View style={[skin, { left: 18, top: 162, width: 24, height: 70, borderRadius: 12 }]} />
-            <View style={[skin, { left: 178, top: 162, width: 24, height: 70, borderRadius: 12 }]} />
-            <Part cat="Legs" style={{ left: 66, top: 180, width: 41, height: 100, borderRadius: 18 }} />
-            <Part cat="Legs" style={{ left: 113, top: 180, width: 41, height: 100, borderRadius: 18 }} />
-            <View style={[skin, { left: 70, top: 284, width: 32, height: 44, borderRadius: 14 }]} />
-            <View style={[skin, { left: 118, top: 284, width: 32, height: 44, borderRadius: 14 }]} />
+            <Text style={{ color: THEME.text, fontWeight: '900', fontSize: 15 }}>{picked}</Text>
+            <Text style={{ color: parseHex(info.color), fontWeight: '800', fontSize: 13, marginTop: 2 }}>{statusLabel[info.status]}</Text>
+            <View style={[s.barTrack, { width: '100%', marginTop: 8 }]}>
+              <View style={[s.barFill, { width: `${Math.round((info.progress || 0) * 100)}%`, backgroundColor: parseHex(info.color) }]} />
+            </View>
+            <Text style={[s.muted, { marginTop: 6 }]}>
+              {info.hoursLeft > 0 ? `${Math.ceil(info.hoursLeft)}h until fully recovered (${info.targetHours}h window)` : 'Fully recovered, go hit it'}
+            </Text>
           </>
         ) : (
-          <>
-            <Part cat="Shoulders" style={{ left: 36, top: 56, width: 36, height: 36, borderRadius: 18 }} />
-            <Part cat="Shoulders" style={{ left: 148, top: 56, width: 36, height: 36, borderRadius: 18 }} />
-            <Part cat="Back" style={{ left: 74, top: 58, width: 72, height: 112, borderRadius: 20 }} />
-            <Part cat="Triceps" style={{ left: 22, top: 96, width: 28, height: 62, borderRadius: 14 }} />
-            <Part cat="Triceps" style={{ left: 170, top: 96, width: 28, height: 62, borderRadius: 14 }} />
-            <View style={[skin, { left: 18, top: 162, width: 24, height: 70, borderRadius: 12 }]} />
-            <View style={[skin, { left: 178, top: 162, width: 24, height: 70, borderRadius: 12 }]} />
-            <Part cat="Legs" style={{ left: 66, top: 180, width: 41, height: 100, borderRadius: 18 }} />
-            <Part cat="Legs" style={{ left: 113, top: 180, width: 41, height: 100, borderRadius: 18 }} />
-            <View style={[skin, { left: 70, top: 284, width: 32, height: 44, borderRadius: 14 }]} />
-            <View style={[skin, { left: 118, top: 284, width: 32, height: 44, borderRadius: 14 }]} />
-          </>
+          <Text style={[s.muted, { textAlign: 'center' }]}>Tap a muscle on the body or a chip to see its recovery</Text>
         )}
       </View>
-      <View style={s.legendRow}>
-        {[['#22C55E', 'Ready'], ['#F59E0B', 'Recovering'], ['#EF4444', 'Fatigued']].map(([c, l]) => (
-          <View key={l} style={s.legendItem}><View style={[s.legendDot, { backgroundColor: c }]} /><Text style={s.muted}>{l}</Text></View>
-        ))}
-      </View>
-      <Text style={[s.muted, { marginTop: 10, textAlign: 'center' }]}>
-        {info
-          ? `${picked}: ${statusLabel[info.status]}${info.hoursLeft > 0 ? ` · ${Math.ceil(info.hoursLeft)}h left` : ''}`
-          : 'Tap a muscle to see its recovery'}
-      </Text>
     </View>
   );
 }
 
-export function ProfileModal({ visible, onClose, profile, recovery }) {
+const RECOVERY_ORDER = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Core'];
+
+export function ProfileModal({ visible, onClose, profile, recovery, onThemeChange }) {
   const [themeMsg, setThemeMsg] = useState('');
   if (!profile) return null;
   const unlocked = profile.achievements.filter((a) => a.unlocked).length;
-  const pick = async (key) => {
-    const reloaded = await saveTheme(key);
-    if (!reloaded) setThemeMsg('Saved! Restart the app to apply the new theme.');
-  };
+  const pick = (key) => { onThemeChange && onThemeChange(key); setThemeMsg(''); };
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={s.overlay}>
@@ -470,7 +538,7 @@ export function ProfileModal({ visible, onClose, profile, recovery }) {
                 {Object.keys(THEMES).map((k) => (
                   <View key={k} style={s.themeBtn}>
                     <TouchableOpacity
-                      style={[s.themeBox, ACTIVE_THEME_KEY === k && { borderColor: THEMES[k].colors.accent }]}
+                      style={[s.themeBox, getActiveThemeKey() === k && { borderColor: THEMES[k].colors.accent }]}
                       onPress={() => pick(k)}
                     >
                       <View style={[s.themeSwatch, { backgroundColor: THEMES[k].colors.accent }]} />
