@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import { THEME, withAlpha } from './theme';
+import { computeProfile, LevelPill, ProfileModal, WorkoutCompleteModal, buildSessionSummary } from './Profile';
 
 // Prefer Expo/community safe-area insets — RN SafeAreaView often draws a white top hairline on iOS
 let useSafeAreaInsets = () => ({
@@ -52,20 +54,6 @@ try {
 }
 
 // --- CONSTANTS & CONFIG ---
-const THEME = {
-  background: '#0B0B14',
-  surface: '#15151F',
-  surfaceLight: '#1F1F2D',
-  surfaceRaised: '#262638',
-  accent: '#8B5CF6',
-  accentAlt: '#22D3EE',
-  accentMuted: 'rgba(139, 92, 246, 0.18)',
-  text: '#F5F5FA',
-  textMuted: '#8E8EA8',
-  border: '#26263A',
-  success: '#34D399',
-  successMuted: 'rgba(52, 211, 153, 0.15)',
-};
 
 const SHADOW_CARD = Platform.select({
   web: { boxShadow: '0 8px 24px rgba(0,0,0,0.35)' },
@@ -79,9 +67,9 @@ const SHADOW_CARD = Platform.select({
 });
 
 const SHADOW_GLOW = Platform.select({
-  web: { boxShadow: '0 6px 20px rgba(139,92,246,0.45)' },
+  web: { boxShadow: `0 6px 20px ${withAlpha(THEME.accent, 0.45)}` },
   default: {
-    shadowColor: '#8B5CF6',
+    shadowColor: THEME.accent,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.5,
     shadowRadius: 14,
@@ -1030,6 +1018,8 @@ export default function App() {
   const [captureMonthKey, setCaptureMonthKey] = useState(null);
   const [photoPicking, setPhotoPicking] = useState(false);
   const [prBanner, setPrBanner] = useState(null);
+  const [profileVisible, setProfileVisible] = useState(false);
+  const [completeData, setCompleteData] = useState(null);
   const [weeklyGoal, setWeeklyGoal] = useState(4);
 
   // Rest timer
@@ -1236,6 +1226,16 @@ export default function App() {
       };
     });
   }, [history, recoveryWindows]);
+
+  const latestBodyWeight = useMemo(() => {
+    const keys = Object.keys(weightLog || {}).filter((k) => Number(weightLog[k]) > 0).sort();
+    return keys.length ? Number(weightLog[keys[keys.length - 1]]) : null;
+  }, [weightLog]);
+
+  const profile = useMemo(
+    () => computeProfile(history, { addictions, sleepLog, weightLog, proteinLog, bodyWeight: latestBodyWeight }),
+    [history, addictions, sleepLog, weightLog, proteinLog, latestBodyWeight]
+  );
 
   const weeklySetsMatrix = useMemo(() => {
     const weekStart = getWeekStartDate();
@@ -1705,6 +1705,18 @@ export default function App() {
       const rec = getExerciseRecords(history, ex.name);
       return ex.sets.some((st) => isNewRecord(st, rec));
     }).length;
+
+    if (!isEditingSavedWorkout) {
+      const before = profile;
+      const after = computeProfile(updatedHistory, { addictions, sleepLog, weightLog, proteinLog, bodyWeight: latestBodyWeight });
+      setCompleteData({
+        summary: buildSessionSummary(newSession, targetDate, prCount),
+        xpGained: Math.max(0, after.xp - before.xp),
+        leveledUp: after.level > before.level,
+        level: after.level,
+        title: after.title
+      });
+    }
 
     setHistory(updatedHistory);
     saveData(STORAGE_KEYS.HISTORY, updatedHistory);
@@ -2671,6 +2683,7 @@ export default function App() {
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Ionicons name="flash" size={26} color={THEME.accent} style={{ marginRight: 6 }} />
           <Text style={styles.headerTitle}>KatTracker</Text>
+          <LevelPill profile={profile} onPress={() => { haptic(8); setProfileVisible(true); }} />
         </View>
         <View style={{ alignItems: 'flex-end' }}>
           <Text style={styles.headerSubtitle}>{todayStr}</Text>
@@ -3076,7 +3089,7 @@ export default function App() {
                                 styles.weightBarFill,
                                 {
                                   height: `${heightPct}%`,
-                                  backgroundColor: p.value != null ? '#8B5CF6' : 'transparent'
+                                  backgroundColor: p.value != null ? THEME.accent : 'transparent'
                                 }
                               ]}
                             />
@@ -4365,6 +4378,9 @@ export default function App() {
           </View>
         </View>
       </Modal>
+
+      <ProfileModal visible={profileVisible} onClose={() => setProfileVisible(false)} profile={profile} recovery={recoveryMatrix} />
+      <WorkoutCompleteModal data={completeData} onClose={() => setCompleteData(null)} />
 
       <Modal visible={weeklyReportVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -6137,7 +6153,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2A1B55',
+    backgroundColor: THEME.bannerBg,
     borderWidth: 1,
     borderColor: THEME.accent,
     borderRadius: 20,
