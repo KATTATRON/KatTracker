@@ -131,7 +131,7 @@ const SUPPLEMENT_DICTIONARY = [
 
 const EXERCISE_DICTIONARY = [
   // CHEST
-  { name: 'Chin-ups (Bodyweight / Weighted)', category: 'Back' },
+  { name: 'Close Grip Bench', category: 'Chest' },
   { name: 'Dips (Chest Focus)', category: 'Chest' },
   { name: 'Dips (Triceps Focus)', category: 'Triceps' },
   { name: 'Flat Bench Press (Barbell)', category: 'Chest' },
@@ -179,8 +179,11 @@ const EXERCISE_DICTIONARY = [
   { name: 'Shoulder Press', category: 'Shoulders' },
   // BICEPS
   { name: 'Barbell Curls', category: 'Biceps' },
-  { name: 'Dumbbell Alternating Curls', category: 'Biceps' },
+  { name: 'Chin-ups (Bodyweight / Weighted)', category: 'Biceps' },
+  { name: 'Dumbbell Curls', category: 'Biceps' },
+  { name: 'Seated Dumbbell Curls', category: 'Biceps' },
   { name: 'Hammer Curls', category: 'Biceps' },
+  { name: 'Hammer Curls Cable', category: 'Biceps' },
   { name: 'Preacher Curls (EZ Bar)', category: 'Biceps' },
   { name: 'Preacher Curls (Machine)', category: 'Biceps' },
   { name: 'Concentration Curls', category: 'Biceps' },
@@ -190,7 +193,7 @@ const EXERCISE_DICTIONARY = [
   { name: 'Bayesian Curls', category: 'Biceps' },
   { name: 'Zottman Curls', category: 'Biceps' },
   { name: 'Preacher Curls', category: 'Biceps' },
-   { name: 'Single arm Cable Curls', category: 'Biceps' },
+  { name: 'Single arm Cable Curls', category: 'Biceps' },
   // TRICEPS
   { name: 'Overhead Tricep Extension (Dumbbell)', category: 'Triceps' },
   { name: 'Overhead Tricep Extension', category: 'Triceps' },
@@ -204,6 +207,7 @@ const EXERCISE_DICTIONARY = [
   { name: 'Bench Dips', category: 'Triceps' },
   { name: 'Machine Tricep Pressdown', category: 'Triceps' },
   { name: 'Machine Dips', category: 'Triceps' },
+  { name: 'Close Grip Bench', category: 'Triceps' },
   // LEGS
   { name: 'Back Squat (Barbell)', category: 'Legs' },
   { name: 'Leg Press', category: 'Legs' },
